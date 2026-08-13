@@ -1,0 +1,17 @@
+# Tiene el App Password de Gmail en texto plano.
+config.json
+
+# La contraparte del token del servidor, del lado de la extensión.
+extension/token.js
+
+# Historial de postulaciones: datos personales propios y de recruiters.
+postulaciones.db
+
+# CV y documentos personales. El repositorio es la herramienta, no mis archivos.
+*.pdf
+
+# Configuración local de herramientas.
+.claude/
+
+__pycache__/
+*.pyc

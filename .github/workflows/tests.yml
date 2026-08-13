@@ -1,0 +1,72 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # No hay pip install: el proyecto corre solo con la biblioteca estandar.
+      # Los tests arman sus propios fixtures, asi que no necesitan config.json ni los CV.
+      - name: Correr la suite
+        working-directory: tests
+        run: python -W error::ResourceWarning -m unittest discover -v
+
+  extension:
+    name: Extensión
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validar sintaxis del JavaScript
+        run: |
+          for archivo in extension/*.js; do
+            echo "· $archivo"
+            node --check "$archivo"
+          done
+
+      - name: Validar el manifest
+        run: python -c "import json; m = json.load(open('extension/manifest.json')); assert m['manifest_version'] == 3; print('manifest v3 OK:', m['name'], m['version'])"
+
+  secretos:
+    name: Sin secretos
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Red de seguridad: config.json tiene la contraseña de aplicación de Gmail y esta
+      # gitignoreado, pero un `git add -f` distraído lo metería igual. Que el CI falle es
+      # preferible a enterarse después.
+      - name: Que no haya credenciales en el repositorio
+        run: |
+          if git ls-files --error-unmatch config.json 2>/dev/null; then
+            echo "::error::config.json esta versionado y tiene credenciales"
+            exit 1
+          fi
+          if git ls-files | grep -qE '\.(pdf|db)$'; then
+            echo "::error::hay archivos personales (.pdf o .db) versionados"
+            exit 1
+          fi
+          echo "Sin credenciales ni datos personales en el repositorio."

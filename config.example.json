@@ -1,0 +1,44 @@
+{
+  "_nota": "Copiá este archivo como config.json y completalo. config.json está gitignoreado porque el app_password es un secreto.",
+
+  "remitente": {
+    "email": "vos@gmail.com",
+    "nombre": "Nombre Apellido",
+    "rol": "QA Analyst",
+    "app_password": "PEGA_ACA_TU_APP_PASSWORD"
+  },
+
+  "smtp": { "host": "smtp.gmail.com", "puerto": 465 },
+  "imap": { "host": "imap.gmail.com", "puerto": 993 },
+
+  "portfolio": {
+    "base": "https://tu-portfolio.example",
+    "sufijos": { "es": "/es", "en": "/en" }
+  },
+  "linkedin": "https://www.linkedin.com/in/tu-usuario",
+
+  "etiqueta_padre": "Postulaciones",
+
+  "idiomas": {
+    "es": {
+      "cv": "(es) CV - Nombre Apellido.pdf",
+      "plantilla": "(es) cuerpo mail.txt",
+      "asunto": "Postulación {puesto} - {remitente}",
+      "sin_puesto": "QA",
+      "sin_empresa": "la empresa"
+    },
+    "en": {
+      "cv": "(en) CV - Nombre Apellido.pdf",
+      "plantilla": "(en) cuerpo mail.txt",
+      "asunto": "Application for {puesto} - {remitente}",
+      "sin_puesto": "QA",
+      "sin_empresa": "your company"
+    }
+  },
+
+  "servidor": {
+    "puerto": 8765,
+    "token": "GENERA_UNO_CON: python -c \"import secrets; print(secrets.token_urlsafe(24))\"",
+    "origenes": ["https://www.linkedin.com", "https://linkedin.com"]
+  }
+}

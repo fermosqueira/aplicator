@@ -1,0 +1,11 @@
+Hi {recruiter}! My name is Fernando. I am writing to apply for the {puesto} opening at {empresa} and to share my resume.
+
+I am deeply passionate about technology and software quality, focusing my career on analyzing, designing, and enhancing processes to guarantee robust products. With an organized and detail-oriented mindset, I look forward to bringing value to your teams through structured methodologies and an end-to-end view of QA. My objective is to optimize both the final product and the technical procedures behind it.
+
+Please find my resume attached for further details on my skillset and experience. I would love the chance to connect and discuss how I can add value to your upcoming projects.
+
+In my portfolio you can also find my Playwright automation suites, built with Page Object Model, data-driven testing and continuous integration: {portfolio}
+
+Thank you for your time and consideration.
+
+Best regards,

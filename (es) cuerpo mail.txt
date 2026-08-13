@@ -1,0 +1,11 @@
+Hola {recruiter}! Mi nombre es Fernando. Les escribo para acercarles mi CV y postularme a la búsqueda de {puesto} en {empresa}.
+
+Soy un profesional apasionado por la tecnología y la calidad del software, enfocado en el análisis, creación y mejora de procesos para garantizar la solidez de los productos. Con una forma de trabajo ordenada y orientada al detalle, busco aportar valor a los equipos a través de metodologías bien estructuradas y una visión integral del aseguramiento de la calidad. Mi objetivo es optimizar no solo el software final, sino también los procedimientos técnicos que lo hacen posible.
+
+Adjunto mi currículum para que puedan conocer en detalle mis herramientas y habilidades. Me encantaría tener la oportunidad de conversar con ustedes y contarles cómo puedo sumar a sus proyectos.
+
+En mi portfolio también pueden ver mis suites de automatización con Playwright, con Page Object Model, testing data-driven e integración continua: {portfolio}
+
+Desde ya, muchas gracias por su tiempo y consideración.
+
+Saludos cordiales.

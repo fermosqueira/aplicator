@@ -10,6 +10,9 @@ postulaciones.db
 # CV y documentos personales. El repositorio es la herramienta, no mis archivos.
 *.pdf
 
+# Salida del servidor cuando corre sin consola.
+servidor.log
+
 # Configuración local de herramientas.
 .claude/
 

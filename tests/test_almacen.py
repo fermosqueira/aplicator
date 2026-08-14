@@ -131,6 +131,18 @@ class EstadoDeLaPostulacion(unittest.TestCase):
         self.assertEqual(fila["descartada_en"], "")   # sin fecha colgada de antes
         self.assertEqual(len(almacen.sin_responder(self.con)), 1)
 
+    def test_las_descartadas_van_al_fondo_pero_siguen_estando(self):
+        # Al fondo para que no hagan ruido; presentes porque son historial: dentro de tres
+        # meses sirve saber que a esta empresa ya le escribiste.
+        # Acme es de hoy; Vieja es de 2020. Por fecha Acme iria primera.
+        almacen.guardar(self.con, email="hola@vieja.com", empresa="Vieja",
+                        enviada_en="2020-01-01T10:00:00")
+        almacen.marcar_descartada(self.con, self.id)
+
+        empresas = [f["empresa"] for f in almacen.buscar(self.con)]
+        self.assertEqual(empresas, ["Vieja", "Acme"])  # descartada al fondo aunque sea la mas nueva
+        self.assertEqual(len(almacen.listar(self.con)), 2)
+
     def test_descartar_no_pisa_la_respuesta(self):
         # Son datos distintos: "contestaron" y "lo que contestaron fue que no".
         almacen.marcar_respondida(self.con, self.id, "2026-08-14T10:00:00")

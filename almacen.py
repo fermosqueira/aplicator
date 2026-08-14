@@ -53,6 +53,12 @@ COLUMNAS_NUEVAS = {
     "descartada_en": "TEXT NOT NULL DEFAULT ''",
 }
 
+# Las descartadas van al fondo, no se borran. Arriba queda lo que sigue en juego, que es lo
+# que uno mira todos los dias; abajo el historial, que sirve dentro de tres meses para saber
+# que a esta empresa ya le escribiste. Como el orden va antes del LIMIT, una descartada vieja
+# nunca desplaza a una activa de la lista.
+ORDEN = "descartada ASC, enviada_en DESC"
+
 # Donde busca el buscador del panel. El texto del post es la razon de ser de todo esto:
 # permite encontrar una postulacion por una palabra que solo estaba en la publicacion.
 CAMPOS_BUSCABLES = (
@@ -186,7 +192,7 @@ def buscar(con: sqlite3.Connection, consulta: str = "", limite: int = 200) -> li
     traer todo y filtrar en memoria es de sobra.
     """
     filas = con.execute(
-        "SELECT * FROM postulaciones ORDER BY enviada_en DESC LIMIT ?", (limite,)
+        f"SELECT * FROM postulaciones ORDER BY {ORDEN} LIMIT ?", (limite,)
     ).fetchall()
 
     consulta = _sin_acentos(consulta).lower().strip()
@@ -218,5 +224,5 @@ def sin_responder(con: sqlite3.Connection) -> list[sqlite3.Row]:
 
 def listar(con: sqlite3.Connection, limite: int = 50) -> list[sqlite3.Row]:
     return con.execute(
-        "SELECT * FROM postulaciones ORDER BY enviada_en DESC LIMIT ?", (limite,)
+        f"SELECT * FROM postulaciones ORDER BY {ORDEN} LIMIT ?", (limite,)
     ).fetchall()

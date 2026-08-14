@@ -191,9 +191,9 @@ class Manejador(BaseHTTPRequestHandler):
         try:
             self._responder(200, accion(self._leer_json()))
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-            # El navegador se cansó de esperar y cortó. Revisar respuestas puede tardar
-            # bastante contra Gmail. El trabajo del servidor ya se hizo; lo unico que se
-            # perdio es el aviso. Intentar contestar un 500 aca solo suma otro traceback.
+            # El cliente corto antes de que contestaramos: recargo la pagina, cerro la
+            # pestaña. El trabajo del servidor ya se hizo; lo unico que se perdio es el
+            # aviso. Intentar contestar un 500 aca solo suma otro traceback al log.
             _log(f"{self.path}: el cliente corto antes de la respuesta (el trabajo se hizo)")
         except (ValueError, FileNotFoundError) as e:
             self._responder(400, {"ok": False, "error": str(e)})

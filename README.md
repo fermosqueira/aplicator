@@ -67,8 +67,10 @@ Corre **solo, cada 30 minutos** mientras el servidor está arriba (`revisar_cada
 `--respuestas` por consola, pero son el atajo, no el mecanismo: algo que hay que acordarse de
 disparar, para algo que pasa semanas después, en la práctica no existe.
 
-**El "me dijeron que no".** Lo marcás vos, con un botón en la fila del panel: queda tachada y
-en rojo, y sale de las pendientes. Es manual a propósito. Un rebote se reconoce por su
+**El "me dijeron que no".** Lo marcás vos, con un botón en la fila del panel: queda tachada,
+en rojo, **se va al fondo de la tabla** y sale de las pendientes. No se borra ni se esconde —el
+buscador la sigue encontrando—, porque dentro de tres meses sirve saber que a esa empresa ya
+le escribiste. Arriba queda lo que sigue en juego. Es manual a propósito. Un rebote se reconoce por su
 estructura —lo manda un `mailer-daemon`, no hay ambigüedad—, pero un rechazo hay que leerlo, y
 "no avanzamos con esta posición, pero tenemos otra" se parece demasiado a un no. Dar por
 perdida una postulación que seguía viva es el error caro, así que esa lectura la hace una

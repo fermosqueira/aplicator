@@ -183,7 +183,7 @@ function pintar(filas) {
         </div>
         <div class="acciones">
           <button class="descartar" data-id="${f.id}" data-valor="${f.descartada ? "0" : "1"}">
-            ${f.descartada ? "No estaba descartada" : "Me dijeron que no"}
+            ${f.descartada ? "↩️ Volver a activas" : "👎 (no te rindas)"}
           </button>
           ${f.descartada_en ? `<span class="dato" style="margin:0;align-self:center">descartada el ${esc(f.descartada_en.slice(0, 10))}</span>` : ""}
         </div>

@@ -98,36 +98,119 @@ def _buscar_uid(imap: imaplib.IMAP4_SSL, marca: str, destino: str, intentos: int
     return None
 
 
-def etiquetar(cfg: dict, marca: str, destino: str, etiqueta: str) -> bool:
+def etiquetar(cfg: dict, marca: str, destino: str, etiqueta: str) -> tuple[bool, str]:
     """Agrega la etiqueta al mensaje enviado. En Gmail, copiar a una carpeta = etiquetar.
 
-    Devuelve True/False en vez de tirar excepcion: si esto falla el mail ya salio igual,
-    y tratarlo como error seria mentir sobre lo que paso.
+    Devuelve (se_etiqueto, id_de_hilo) en vez de tirar excepcion: si esto falla el mail ya
+    salio igual, y tratarlo como error seria mentir sobre lo que paso. El id de hilo se pide
+    de paso, aprovechando que ya tenemos ubicado el mensaje: es con lo que despues se
+    encuentra la respuesta.
     """
-    remitente = cfg["remitente"]
-    contexto = ssl.create_default_context()
-    imap = imaplib.IMAP4_SSL(cfg["imap"]["host"], cfg["imap"]["puerto"], ssl_context=contexto)
-    try:
-        imap.login(remitente["email"], remitente["app_password"])
+    with Buzon(cfg) as buzon:
+        buzon.crear_etiqueta(etiqueta)
+        if not buzon.abrir(buzon.carpeta_enviados()):
+            return False, ""
 
+        uid = _buscar_uid(buzon.imap, marca, destino)
+        if not uid:
+            return False, ""
+
+        hilo = buzon.hilo_de(uid)
+        return buzon.copiar(uid, etiqueta), hilo
+
+
+class Buzon:
+    """Envoltorio fino sobre IMAP.
+
+    Existe para que el detector de respuestas se pueda probar con un doble en vez de contra
+    la casilla real: la logica de emparejar respuestas con postulaciones vive en nucleo.py y
+    habla contra esta interfaz, no contra imaplib.
+    """
+
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        self.imap = None
+
+    def __enter__(self) -> Buzon:
+        remitente = self.cfg["remitente"]
+        self.imap = imaplib.IMAP4_SSL(
+            self.cfg["imap"]["host"],
+            self.cfg["imap"]["puerto"],
+            ssl_context=ssl.create_default_context(),
+        )
+        self.imap.login(remitente["email"], remitente["app_password"])
+        return self
+
+    def __exit__(self, *_):
         try:
-            imap.create(f'"{etiqueta}"')  # devuelve NO si ya existe, y esta bien
+            self.imap.logout()
+        except Exception:
+            pass
+
+    # --- carpetas -----------------------------------------------------------------
+
+    def carpeta_enviados(self) -> str:
+        return _carpeta_enviados(self.imap)
+
+    def carpeta_todos(self) -> str:
+        """'Todos' incluye las respuestas recibidas y lo enviado: es donde vive el hilo."""
+        ok, lineas = self.imap.list()
+        if ok == "OK":
+            for linea in lineas or []:
+                texto = linea.decode("utf-8", "replace") if isinstance(linea, bytes) else str(linea)
+                if "\\All" in texto:
+                    comillas = re.findall(r'"([^"]*)"', texto)
+                    if comillas:
+                        return f'"{comillas[-1]}"'
+        return '"[Gmail]/All Mail"'
+
+    def abrir(self, carpeta: str) -> bool:
+        return self.imap.select(carpeta)[0] == "OK"
+
+    def crear_etiqueta(self, etiqueta: str) -> None:
+        try:
+            self.imap.create(f'"{etiqueta}"')  # devuelve NO si ya existe, y esta bien
         except imaplib.IMAP4.error:
             pass
 
-        if imap.select(_carpeta_enviados(imap))[0] != "OK":
-            return False
+    # --- mensajes -----------------------------------------------------------------
 
-        uid = _buscar_uid(imap, marca, destino)
-        if not uid:
-            return False
+    def hilo_de(self, uid: bytes) -> str:
+        """X-GM-THRID: el id de conversacion de Gmail."""
+        ok, datos = self.imap.uid("FETCH", uid, "(X-GM-THRID)")
+        if ok != "OK" or not datos or not datos[0]:
+            return ""
+        crudo = datos[0].decode("utf-8", "replace") if isinstance(datos[0], bytes) else str(datos[0])
+        encontrado = re.search(r"X-GM-THRID (\d+)", crudo)
+        return encontrado.group(1) if encontrado else ""
 
-        return imap.uid("COPY", uid, f'"{etiqueta}"')[0] == "OK"
-    finally:
-        try:
-            imap.logout()
-        except Exception:
-            pass
+    def uids_del_hilo(self, hilo: str) -> list[bytes]:
+        ok, datos = self.imap.uid("SEARCH", None, "X-GM-THRID", str(hilo))
+        return datos[0].split() if ok == "OK" and datos and datos[0] else []
+
+    def uids_de(self, remitente: str, desde: datetime) -> list[bytes]:
+        ok, datos = self.imap.uid(
+            "SEARCH", None, "FROM", f'"{remitente}"', "SINCE", _fecha_imap(desde)
+        )
+        return datos[0].split() if ok == "OK" and datos and datos[0] else []
+
+    def cabeceras(self, uid: bytes) -> dict:
+        """De quien y de cuando, sin bajar el cuerpo del mensaje."""
+        ok, datos = self.imap.uid(
+            "FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (FROM DATE)])"
+        )
+        if ok != "OK" or not datos or not isinstance(datos[0], tuple):
+            return {}
+        texto = datos[0][1].decode("utf-8", "replace")
+        cabeceras = {}
+        for linea in texto.splitlines():
+            if ":" in linea:
+                clave, valor = linea.split(":", 1)
+                cabeceras[clave.strip().lower()] = valor.strip()
+        return cabeceras
+
+    def copiar(self, uid: bytes, etiqueta: str) -> bool:
+        return self.imap.uid("COPY", uid, f'"{etiqueta}"')[0] == "OK"
 
 
 def probar_conexion(cfg: dict) -> list[str]:

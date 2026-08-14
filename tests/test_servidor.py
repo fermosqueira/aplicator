@@ -1,7 +1,8 @@
 """El servidor local y sus dos defensas.
 
-IMPORTANTE: ninguna prueba llama a /enviar con un token valido. Esa ruta manda un mail
-de verdad, y un test que le escriba sin querer a alguien no se puede deshacer.
+IMPORTANTE: ninguna prueba llama a /enviar ni a /respuestas con un token valido. La primera
+manda un mail de verdad; la segunda lee la configuracion real y le escribe etiquetas a la
+casilla. De las dos solo se prueba que rechacen a quien no corresponde.
 """
 
 from __future__ import annotations
@@ -89,6 +90,17 @@ class Seguridad(ServidorLevantado):
         codigo, _ = self.pedir("/enviar", {"email": "a@x.com"}, token=None)
         self.assertEqual(codigo, 403)
 
+    def test_respuestas_tambien_esta_protegido(self):
+        # Toca la casilla real: se verifica el rechazo, nunca el camino feliz.
+        self.assertEqual(self.pedir("/respuestas", {}, token=None)[0], 403)
+        self.assertEqual(
+            self.pedir("/respuestas", {}, origen="https://malicioso.com")[0], 403
+        )
+
+    def test_buscar_tambien_esta_protegido(self):
+        # El historial tiene datos de recruiters: no puede quedar abierto.
+        self.assertEqual(self.pedir("/buscar", {"q": ""}, token=None)[0], 403)
+
     def test_la_extension_si_pasa(self):
         codigo, _ = self.pedir(
             "/sugerir", {"email": "a@x.com"}, origen="chrome-extension://loquesea"
@@ -115,6 +127,31 @@ class Rutas(ServidorLevantado):
     def test_ruta_inexistente(self):
         codigo, _ = self.pedir("/no-existe", {})
         self.assertEqual(codigo, 404)
+
+    def test_el_panel_se_sirve_y_trae_el_token_adentro(self):
+        # La pagina la servimos nosotros, asi que sus pedidos son same-origin y el token
+        # puede viajar embebido sin exponerlo a nadie mas.
+        url = f"http://127.0.0.1:{self.puerto}/historial"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            html = r.read().decode()
+            self.assertEqual(r.status, 200)
+            self.assertIn("text/html", r.headers["Content-Type"])
+        self.assertIn("token-de-prueba", html)
+        self.assertIn("Postulaciones", html)
+        self.assertNotIn("__TOKEN__", html)  # el placeholder tiene que haberse reemplazado
+
+    def test_buscar_devuelve_las_filas(self):
+        codigo, cuerpo = self.pedir("/buscar", {"q": ""})
+        self.assertEqual(codigo, 200)
+        self.assertTrue(cuerpo["ok"])
+        self.assertIsInstance(cuerpo["filas"], list)
+
+    def test_el_panel_es_same_origin(self):
+        # Un pedido con el Origin del propio servidor tiene que pasar: es el del panel.
+        codigo, _ = self.pedir(
+            "/buscar", {"q": ""}, origen=f"http://127.0.0.1:{self.puerto}"
+        )
+        self.assertEqual(codigo, 200)
 
     def test_sugerir_devuelve_las_tres_pistas(self):
         codigo, cuerpo = self.pedir("/sugerir", {

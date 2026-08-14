@@ -15,13 +15,18 @@ from __future__ import annotations
 import json
 import sys
 import traceback
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import almacen
 import nucleo
+import panel
 import plantillas
 
 LIMITE_CUERPO = 256 * 1024
+ARRANQUE = datetime.now().strftime("%d/%m %H:%M")
+RUTA_LOG = Path(__file__).resolve().parent / "servidor.log"
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -45,7 +50,12 @@ class Manejador(BaseHTTPRequestHandler):
         origen = self.headers.get("Origin")
         if origen is None:
             return True
-        return origen.startswith("chrome-extension://") or origen in self.ajustes["origenes"]
+        if origen.startswith("chrome-extension://"):
+            return True
+        # El panel del historial lo servimos nosotros: sus pedidos son same-origin.
+        puerto = self.server.server_address[1]
+        propios = {f"http://127.0.0.1:{puerto}", f"http://localhost:{puerto}"}
+        return origen in propios or origen in self.ajustes["origenes"]
 
     def _cors(self, origen: str | None) -> None:
         self.send_header("Access-Control-Allow-Origin", origen or "null")
@@ -83,8 +93,16 @@ class Manejador(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):  # noqa: N802
-        if self.path.rstrip("/") == "/ping":
-            self._responder(200, {"ok": True, "servicio": "aplicador"})
+        ruta = self.path.split("?")[0].rstrip("/") or "/"
+        if ruta == "/ping":
+            self._responder(200, {"ok": True, "servicio": "aplicador", "desde": ARRANQUE})
+        elif ruta in ("/", "/historial"):
+            cuerpo = panel.render(self.ajustes["token"], ARRANQUE)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(cuerpo)))
+            self.end_headers()
+            self.wfile.write(cuerpo)
         else:
             self._responder(404, {"ok": False, "error": "ruta desconocida"})
 
@@ -101,6 +119,8 @@ class Manejador(BaseHTTPRequestHandler):
             "/sugerir": self._sugerir,
             "/previsualizar": self._previsualizar,
             "/enviar": self._enviar,
+            "/buscar": self._buscar,
+            "/respuestas": self._respuestas,
         }
         accion = rutas.get(ruta)
         if accion is None:
@@ -118,14 +138,20 @@ class Manejador(BaseHTTPRequestHandler):
     # --- acciones ----------------------------------------------------------------
 
     @staticmethod
-    def _campos(datos: dict) -> dict:
-        return {
+    def _campos(datos: dict, con_post: bool = False) -> dict:
+        campos = {
             "destino": (datos.get("email") or "").strip(),
             "recruiter": (datos.get("recruiter") or "").strip(),
             "empresa": (datos.get("empresa") or "").strip(),
             "puesto": (datos.get("puesto") or "").strip(),
             "idioma": datos.get("idioma") if datos.get("idioma") in ("es", "en") else "es",
         }
+        if con_post:
+            # Solo al enviar: previsualizar no necesita el post y no tiene donde guardarlo.
+            campos["texto_post"] = (datos.get("texto") or "").strip()
+            campos["url_post"] = (datos.get("url") or "").strip()
+            campos["autor_post"] = (datos.get("autor") or "").strip()
+        return campos
 
     def _sugerir(self, datos: dict) -> dict:
         email = (datos.get("email") or "").strip()
@@ -145,11 +171,21 @@ class Manejador(BaseHTTPRequestHandler):
         vista["ok"] = True
         return vista
 
+    def _buscar(self, datos: dict) -> dict:
+        with almacen.sesion(self.ruta_db) as con:
+            filas = almacen.buscar(con, datos.get("q") or "")
+        return {"ok": True, "filas": [dict(f) for f in filas]}
+
+    def _respuestas(self, datos: dict) -> dict:
+        cfg = plantillas.cargar_config()  # necesita credenciales: habla con Gmail
+        with almacen.sesion(self.ruta_db) as con:
+            return nucleo.detectar_respuestas(cfg, con)
+
     def _enviar(self, datos: dict) -> dict:
         # El envio si necesita credenciales: las releemos por si acabas de cargarlas.
         cfg = plantillas.cargar_config()
         with almacen.sesion(self.ruta_db) as con:
-            return nucleo.postular(cfg, con, **self._campos(datos))
+            return nucleo.postular(cfg, con, **self._campos(datos, con_post=True))
 
 
 def crear_servidor(cfg: dict, puerto: int | None = None, ruta_db=None) -> ThreadingHTTPServer:
@@ -161,11 +197,22 @@ def crear_servidor(cfg: dict, puerto: int | None = None, ruta_db=None) -> Thread
     return ThreadingHTTPServer(("127.0.0.1", puerto), manejador)
 
 
+def _salida_a_archivo() -> None:
+    """Bajo pythonw.exe no hay consola y sys.stdout es None: cualquier print reventaria y,
+    peor, no habria forma de saber que esta pasando. Se manda todo a servidor.log."""
+    if sys.stdout is not None:
+        return
+    log = open(RUTA_LOG, "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = log
+
+
 def main() -> int:
+    _salida_a_archivo()
     cfg = plantillas.cargar_config(exigir_clave=False)
     servidor = crear_servidor(cfg)
     puerto = servidor.server_address[1]
-    print(f"Aplicador escuchando en http://127.0.0.1:{puerto}  (Ctrl+C para cortar)")
+    print(f"[{ARRANQUE}] Aplicador escuchando en http://127.0.0.1:{puerto}"
+          f"  ·  historial: http://127.0.0.1:{puerto}/historial")
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:

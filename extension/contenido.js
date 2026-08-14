@@ -113,8 +113,19 @@
       email,
       texto: textoDelPost(contenedor, elemento),
       autor: autorDelPost(contenedor),
+      url: urlDelPost(contenedor),
       chip: elemento,
     });
+  }
+
+  function urlDelPost(contenedor) {
+    // El data-urn identifica la publicacion y se puede convertir en permalink. Si el post
+    // no lo trae, la URL actual sirve igual cuando ya estamos parados en el post.
+    const urn = contenedor?.closest?.("[data-urn]")?.getAttribute("data-urn");
+    if (urn && urn.includes("activity")) {
+      return `https://www.linkedin.com/feed/update/${urn}/`;
+    }
+    return location.href.startsWith("https://www.linkedin.com/posts/") ? location.href : "";
   }
 
   function marcarEnlaces(raiz) {

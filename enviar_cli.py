@@ -51,9 +51,46 @@ def cmd_historial(limite: int) -> int:
 
     _rotulo(f"Ultimas {len(filas)} postulaciones")
     for f in filas:
-        etiqueta = "etiquetada" if f["etiquetada"] else "SIN etiquetar"
+        estado = "respondida" if f["respondida"] else ("enviada" if f["etiquetada"] else "sin etiquetar")
         print(f"  {f['enviada_en'][:16]}  {f['email']:<34} {f['empresa']:<20} "
-              f"{f['puesto']:<24} [{etiqueta}]")
+              f"{f['puesto']:<24} [{estado}]")
+    return 0
+
+
+def cmd_buscar(consulta: str) -> int:
+    con = almacen.conectar()
+    filas = almacen.buscar(con, consulta)
+    if not filas:
+        print(f"Nada coincide con {consulta!r}.")
+        return 0
+
+    _rotulo(f"{len(filas)} coincidencia(s) con {consulta!r}")
+    for f in filas:
+        print(f"\n  {f['enviada_en'][:10]}  {f['empresa'] or '—'} · {f['puesto'] or '—'}")
+        print(f"    {f['email']}" + (f"  ({f['recruiter']})" if f["recruiter"] else ""))
+        if f["autor_post"]:
+            print(f"    publicado por {f['autor_post']}")
+        if f["url_post"]:
+            print(f"    {f['url_post']}")
+        if f["texto_post"]:
+            recorte = " ".join(f["texto_post"].split())[:220]
+            print(f"    {recorte}…")
+    print("\n  (el texto completo se lee mejor en http://127.0.0.1:8765/historial)")
+    return 0
+
+
+def cmd_respuestas() -> int:
+    cfg = plantillas.cargar_config()
+    con = almacen.conectar()
+    resultado = nucleo.detectar_respuestas(cfg, con)
+
+    _rotulo(f"Revisadas {resultado['revisadas']} postulaciones pendientes")
+    if not resultado["nuevas"]:
+        print("  Sin respuestas nuevas.")
+        return 0
+    for n in resultado["nuevas"]:
+        print(f"  {n['empresa'] or n['email']} · {n['puesto'] or '—'}")
+        print(f"    respondio {n['de']} el {n['cuando'][:10]}")
     return 0
 
 
@@ -124,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--enviar", action="store_true", help="enviar de verdad")
     p.add_argument("--probar", action="store_true", help="chequear credenciales de Gmail")
     p.add_argument("--historial", action="store_true", help="listar lo ya enviado")
+    p.add_argument("--buscar", metavar="TEXTO", help="buscar en el historial, incluido el post")
+    p.add_argument("--respuestas", action="store_true", help="revisar Gmail por respuestas nuevas")
 
     args = p.parse_args(argv)
 
@@ -131,6 +170,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_probar()
     if args.historial:
         return cmd_historial(50)
+    if args.buscar:
+        return cmd_buscar(args.buscar)
+    if args.respuestas:
+        return cmd_respuestas()
     if not args.destino:
         p.print_help()
         return 1

@@ -132,7 +132,7 @@
     });
   }
 
-  function abrir({ email, texto, autor, chip }) {
+  function abrir({ email, texto, autor, url, chip }) {
     cerrarAbierto();
 
     const anfitrion = document.createElement("aplicador-modal");
@@ -223,6 +223,11 @@
       puesto: campos.puesto.value.trim(),
       recruiter: campos.recruiter.value.trim(),
       idioma,
+      // El post viaja con el envio y queda guardado: es lo que despues permite saber a que
+      // oferta correspondia una respuesta, cuando el titulo del puesto ya no alcanza.
+      texto: texto || "",
+      autor: autor || "",
+      url: url || "",
     });
 
     const invalidarBorrador = () => {

@@ -7,6 +7,8 @@ entrada se comporten exactamente igual.
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 
 import almacen
 import correo
@@ -62,6 +64,9 @@ def postular(
     empresa: str = "",
     puesto: str = "",
     idioma: str = "es",
+    texto_post: str = "",
+    url_post: str = "",
+    autor_post: str = "",
 ) -> dict:
     """Envia, registra y etiqueta. Devuelve el detalle de lo que efectivamente paso."""
     destino = (destino or "").strip()
@@ -93,13 +98,19 @@ def postular(
         asunto=vista["asunto"],
         marca=marca,
         etiqueta=vista["etiqueta"],
+        # El post entero: es lo que dentro de un mes va a decir de que era esta oferta.
+        texto_post=texto_post,
+        url_post=url_post,
+        autor_post=autor_post,
     )
 
     try:
-        etiquetada = correo.etiquetar(cfg, marca, destino, vista["etiqueta"])
+        etiquetada, hilo = correo.etiquetar(cfg, marca, destino, vista["etiqueta"])
     except Exception:
-        etiquetada = False
+        etiquetada, hilo = False, ""
     almacen.marcar_etiquetada(con, id_fila, etiquetada)
+    if hilo:
+        almacen.guardar_hilo(con, id_fila, hilo)
 
     return {
         "ok": True,
@@ -111,3 +122,72 @@ def postular(
         "etiquetada": etiquetada,
         "duplicados": vista["duplicados"],
     }
+
+
+def detectar_respuestas(cfg: dict, con: sqlite3.Connection, buzon=None) -> dict:
+    """Busca respuestas a las postulaciones pendientes, las marca y las etiqueta.
+
+    El `buzon` se puede inyectar: los tests le pasan un doble y asi el emparejamiento se
+    prueba sin tocar la casilla real.
+    """
+    if buzon is not None:
+        return _emparejar(cfg, con, buzon)
+    with correo.Buzon(cfg) as bz:
+        return _emparejar(cfg, con, bz)
+
+
+def _emparejar(cfg: dict, con: sqlite3.Connection, buzon) -> dict:
+    pendientes = almacen.sin_responder(con)
+    propio = cfg["remitente"]["email"].strip().lower()
+    nuevas = []
+
+    if pendientes:
+        buzon.abrir(buzon.carpeta_todos())
+
+    for fila in pendientes:
+        # Por hilo es lo preciso: encuentra la respuesta aunque conteste otra persona de la
+        # empresa desde otra direccion. Sin hilo guardado, caemos al remitente original.
+        uids = buzon.uids_del_hilo(fila["hilo"]) if fila["hilo"] else []
+        if not uids:
+            uids = buzon.uids_de(fila["email"], _fecha_de(fila["enviada_en"]))
+
+        for uid in uids:
+            cabeceras = buzon.cabeceras(uid)
+            if propio in (cabeceras.get("from") or "").lower():
+                continue  # es nuestro propio mensaje dentro del hilo
+
+            cuando = _fecha_del_mensaje(cabeceras.get("date"))
+            buzon.crear_etiqueta(fila["etiqueta"])
+            # Etiquetar tambien la respuesta: asi el dato se ve en la bandeja sin depender
+            # de como Gmail agrupe las conversaciones.
+            buzon.copiar(uid, fila["etiqueta"])
+            almacen.marcar_respondida(con, fila["id"], cuando)
+            nuevas.append({
+                "id": fila["id"],
+                "email": fila["email"],
+                "empresa": fila["empresa"],
+                "puesto": fila["puesto"],
+                "de": cabeceras.get("from", ""),
+                "cuando": cuando,
+            })
+            break
+
+    return {"ok": True, "revisadas": len(pendientes), "nuevas": nuevas}
+
+
+def _fecha_de(iso: str) -> datetime:
+    try:
+        return datetime.fromisoformat(iso)
+    except (ValueError, TypeError):
+        return datetime.now() - timedelta(days=365)
+
+
+def _fecha_del_mensaje(cabecera: str | None) -> str:
+    """La fecha del mail que llego. Si no se puede leer, la de ahora: perder el dato exacto
+    no justifica perder el registro de que hubo respuesta."""
+    if cabecera:
+        try:
+            return parsedate_to_datetime(cabecera).isoformat(timespec="seconds")
+        except (TypeError, ValueError):
+            pass
+    return datetime.now().isoformat(timespec="seconds")

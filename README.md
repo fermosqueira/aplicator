@@ -49,11 +49,36 @@ extensiones que intentan hablar con un proceso local.
 
 ## Cómo sabés quién te respondió
 
-Al enviar, el mensaje queda etiquetado en Gmail como `Postulaciones/<Empresa>`, y el puesto
-viaja en el asunto. Cuando el recruiter responde, el hilo aparece en la bandeja con la
-empresa a la vista y el puesto en el `Re:`. Los dos datos de un vistazo, sin abrir nada.
+Tres capas, de la más liviana a la más completa.
 
-La alternativa —una etiqueta por postulación— es inmanejable a los cuarenta envíos.
+**En la bandeja.** Al enviar, el mensaje queda etiquetado como `Postulaciones/<Empresa>` y el
+puesto viaja en el asunto, así que la respuesta llega como `Re: Postulación QA Automation…`
+con la empresa a la vista. Una etiqueta por postulación sería inmanejable a los cuarenta
+envíos; por eso la empresa va en la etiqueta y el puesto en el asunto.
+
+**El detector.** `Buscar respuestas` en el panel (o `--respuestas`) recorre las postulaciones
+pendientes, busca la conversación en Gmail por su `X-GM-THRID` y, cuando encuentra un mensaje
+que no es tuyo, marca la postulación como respondida y **le pone la etiqueta también al
+mensaje de respuesta**. Buscar por hilo y no por remitente hace que funcione aunque conteste
+otra persona de la empresa desde otra dirección.
+
+**El post guardado.** Es lo que realmente resuelve el problema. Cuando responden un mes
+después, "QA Automation en Trustpeople" no alcanza para recordar de qué oferta se trataba: el
+detalle —que el cliente era Mercado Pago, que pedían SQL Server, que era presencial en CDMX—
+estaba en la publicación. Se guarda entera, con el autor y el permalink, y el buscador del
+panel la encuentra por cualquier palabra que tenga adentro.
+
+## El panel
+
+`http://127.0.0.1:8765/historial`
+
+Buscador arriba, una fila por postulación, y cada fila se despliega mostrando el post
+completo, el link a la publicación y el link al hilo de Gmail. El buscador cubre mail,
+empresa, puesto, recruiter, autor y **el cuerpo del post**, ignora acentos y mayúsculas, y
+exige que estén todos los términos que escribas.
+
+La página la sirve el propio servidor, así que sus pedidos son same-origin y el token puede
+viajar embebido sin exponerse a nadie.
 
 ## Puesta en marcha
 
@@ -70,7 +95,16 @@ La alternativa —una etiqueta por postulación— es inmanejable a los cuarenta
 
 ## Uso
 
-Dejar el servidor abierto mientras se navega: `iniciar.bat`.
+El servidor tiene que estar corriendo. Para que arranque solo al iniciar sesión, sin ventana
+de consola:
+
+```
+powershell -ExecutionPolicy Bypass -File instalar-inicio.ps1
+```
+
+Crea un acceso directo en la carpeta de Inicio que lo lanza con `pythonw.exe`. Para apagarlo,
+`detener.bat`; para desinstalarlo, el mismo script con `-Quitar`. Como no hay consola, lo que
+pasa queda en `servidor.log`. También se puede seguir levantando a mano con `iniciar.bat`.
 
 En LinkedIn los mails aparecen resaltados. Al hacer click se abre un panel a la derecha con la
 empresa, el puesto y el idioma ya completados a partir del texto del post.
@@ -90,6 +124,8 @@ python enviar_cli.py --probar
 python enviar_cli.py --ver rrhh@acme.com --empresa Acme --puesto "QA Automation"
 python enviar_cli.py --enviar rrhh@acme.com --empresa Acme --puesto "QA Automation" --recruiter Ana
 python enviar_cli.py --historial
+python enviar_cli.py --buscar "mercado pago"
+python enviar_cli.py --respuestas
 ```
 
 `--ver` nunca envía nada. `--idioma en` cambia plantilla, CV y el link del portfolio.
@@ -100,16 +136,25 @@ python enviar_cli.py --historial
 cd tests && python -m unittest discover -v
 ```
 
-47 tests, sin dependencias ni servicios externos. Los fixtures arman su propia carpeta con
+79 tests, sin dependencias ni servicios externos. Los fixtures arman su propia carpeta con
 plantillas y PDF de mentira, así que corren igual en cualquier máquina y en CI, donde no
 existen ni `config.json` ni los CV.
 
 Cubren la detección de idioma, puesto y empresa; el armado del mail (incluida la garantía de
 que **nunca** salga un `{placeholder}` sin reemplazar); el saneado de etiquetas para IMAP; el
-registro y la detección de duplicados; y las dos defensas del servidor local.
+registro y la detección de duplicados; el buscador; y las dos defensas del servidor local.
 
-Ninguna prueba llama a `/enviar` con un token válido: esa ruta manda un mail de verdad, y un
-test que le escriba sin querer a alguien no se puede deshacer.
+Dos que valen la pena mencionar:
+
+- **La migración del esquema.** Una base con el formato viejo tiene que ganar las columnas
+  nuevas y conservar sus filas. Si eso falla, alguien pierde su historial por actualizar.
+- **El emparejamiento de respuestas**, contra un doble de IMAP. La lógica vive en `nucleo.py`
+  y habla contra la interfaz de `correo.Buzon`, que existe justamente para poder probarla sin
+  tocar la casilla real.
+
+Ninguna prueba llama a `/enviar` ni a `/respuestas` con un token válido: la primera manda un
+mail de verdad y la segunda le escribe etiquetas a Gmail. De las dos solo se verifica que
+rechacen a quien no corresponde.
 
 El CI corre además `node --check` sobre el JavaScript de la extensión y falla si alguna vez se
 versiona `config.json`, un `.pdf` o la base de datos.
@@ -122,9 +167,10 @@ versiona `config.json`, un `.pdf` o la base de datos.
 | `(es)/(en) cuerpo mail.txt` | Las plantillas. Los `{huecos}` se completan solos. |
 | `plantillas.py` | Arma el texto, detecta idioma, adivina puesto y empresa. |
 | `correo.py` | Envía por SMTP y etiqueta por IMAP. |
-| `almacen.py` | El registro de postulaciones en SQLite. |
-| `nucleo.py` | Orquesta las tres cosas. Lo usan la consola y el servidor por igual. |
+| `almacen.py` | El registro en SQLite, con el post guardado y el buscador. |
+| `nucleo.py` | Orquesta todo. Lo usan la consola y el servidor por igual. |
 | `servidor.py` | Le da acceso al motor a la extensión. Solo escucha en `127.0.0.1`. |
+| `panel.py` | La página del historial. |
 | `extension/` | Manifest V3: content script, panel en Shadow DOM y service worker. |
 | `tests/` | La suite. |
 

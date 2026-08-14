@@ -72,6 +72,18 @@ PAGINA = """<!doctype html>
     padding: 2px 8px; font-size: 11px; font-weight: 600; text-align: center; }
   .aviso-rebote { margin-top: 10px; padding: 10px 12px; border-radius: 6px;
     background: var(--rojo-fondo); color: var(--rojo); font-size: 12px; }
+  .marca-descartada { color: var(--rojo); background: var(--rojo-fondo); border-radius: 10px;
+    padding: 2px 8px; font-size: 11px; font-weight: 600; text-align: center; }
+
+  /* Descartada: el renglón queda tachado y apagado, pero legible. Es historial, no basura:
+     dentro de tres meses sirve saber que a esta empresa ya le escribiste. */
+  .fila.descartada .empresa, .fila.descartada .puesto, .fila.descartada .fecha {
+    text-decoration: line-through; opacity: .6;
+  }
+  .fila.descartada { border-color: var(--rojo); }
+  .acciones { margin-top: 12px; display: flex; gap: 8px; }
+  .acciones button { padding: 6px 12px; font-size: 12px; }
+  .acciones .descartar:hover:not(:disabled) { border-color: var(--rojo); color: var(--rojo); }
 
   .detalle { display: none; padding: 0 14px 14px; border-top: 1px solid var(--borde); }
   .fila.abierta .detalle { display: block; }
@@ -120,6 +132,8 @@ const esc = (t) => { const d = document.createElement("div"); d.textContent = t 
 // "error" y no "respondida" justamente para que la oferta no quede dada por cerrada.
 function estadoDe(f) {
   if (f.rebotada) return { clase: "marca-rebote", texto: "error" };
+  // Descartada gana sobre respondida: la respuesta fue el "no", y eso es lo que importa.
+  if (f.descartada) return { clase: "marca-descartada", texto: "descartada" };
   if (f.respondida) return { clase: "marca-si", texto: "respondida" };
   return { clase: "marca-no", texto: "sin respuesta" };
 }
@@ -134,18 +148,20 @@ function pintar(filas) {
     return;
   }
 
-  const respondidas = filas.filter((f) => f.respondida).length;
+  const respondidas = filas.filter((f) => f.respondida && !f.descartada).length;
+  const descartadas = filas.filter((f) => f.descartada).length;
   const conError = filas.filter((f) => f.rebotada).length;
   // "postulación" pierde el acento en plural: no alcanza con pegarle "es" atrás.
   resumen.textContent =
     `${filas.length} ${filas.length === 1 ? "postulación" : "postulaciones"} · ` +
     `${respondidas} respondida${respondidas === 1 ? "" : "s"}` +
+    (descartadas ? ` · ${descartadas} descartada${descartadas === 1 ? "" : "s"}` : "") +
     (conError ? ` · ${conError} con error, sin enviar` : "");
 
   listado.innerHTML = filas.map((f) => {
     const estado = estadoDe(f);
     return `
-    <div class="fila">
+    <div class="fila${f.descartada ? " descartada" : ""}" data-id="${f.id}">
       <div class="cabecera">
         <span class="fecha">${esc(f.enviada_en.slice(0, 10))}</span>
         <span class="empresa">${esc(f.empresa || "—")}</span>
@@ -165,12 +181,39 @@ function pintar(filas) {
           ${f.url_post ? `<a href="${esc(f.url_post)}" target="_blank" rel="noopener">Ver la publicación</a>` : ""}
           ${f.hilo ? `<a href="https://mail.google.com/mail/u/0/#all/${esc(f.hilo)}" target="_blank" rel="noopener">Abrir el hilo en Gmail</a>` : ""}
         </div>
+        <div class="acciones">
+          <button class="descartar" data-id="${f.id}" data-valor="${f.descartada ? "0" : "1"}">
+            ${f.descartada ? "No estaba descartada" : "Me dijeron que no"}
+          </button>
+          ${f.descartada_en ? `<span class="dato" style="margin:0;align-self:center">descartada el ${esc(f.descartada_en.slice(0, 10))}</span>` : ""}
+        </div>
       </div>
     </div>`;
   }).join("");
 
   listado.querySelectorAll(".cabecera").forEach((c) =>
     c.addEventListener("click", () => c.parentElement.classList.toggle("abierta"))
+  );
+
+  listado.querySelectorAll(".descartar").forEach((b) =>
+    b.addEventListener("click", async (e) => {
+      e.stopPropagation(); // si no, se cierra la fila de golpe
+      b.disabled = true;
+      const r = await pedir("/descartar", {
+        id: Number(b.dataset.id),
+        descartada: b.dataset.valor === "1",
+      });
+      if (!r.ok) {
+        b.disabled = false;
+        document.getElementById("resumen").textContent = "Error: " + (r.error || "desconocido");
+        return;
+      }
+      // Se vuelve a pedir la lista en vez de tocar el DOM a mano: así lo que se ve es lo
+      // que quedó guardado, y no una suposición sobre lo que se guardó.
+      const abiertas = [...listado.querySelectorAll(".fila.abierta")].map((f) => f.dataset.id);
+      await buscar();
+      abiertas.forEach((id) => listado.querySelector(`.fila[data-id="${id}"]`)?.classList.add("abierta"));
+    })
   );
 }
 

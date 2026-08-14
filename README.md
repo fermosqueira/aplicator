@@ -67,6 +67,13 @@ Corre **solo, cada 30 minutos** mientras el servidor está arriba (`revisar_cada
 `--respuestas` por consola, pero son el atajo, no el mecanismo: algo que hay que acordarse de
 disparar, para algo que pasa semanas después, en la práctica no existe.
 
+**El "me dijeron que no".** Lo marcás vos, con un botón en la fila del panel: queda tachada y
+en rojo, y sale de las pendientes. Es manual a propósito. Un rebote se reconoce por su
+estructura —lo manda un `mailer-daemon`, no hay ambigüedad—, pero un rechazo hay que leerlo, y
+"no avanzamos con esta posición, pero tenemos otra" se parece demasiado a un no. Dar por
+perdida una postulación que seguía viva es el error caro, así que esa lectura la hace una
+persona. Se deshace con el mismo botón.
+
 **Rebotes.** Un mail que rebota vuelve por el mismo hilo y desde una dirección ajena, así que
 sin distinguirlo cuenta como respuesta y la postulación queda dada por cerrada cuando en
 realidad no llegó a nadie. Los mensajes de `mailer-daemon` y `postmaster` se marcan aparte y el

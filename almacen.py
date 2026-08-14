@@ -46,6 +46,11 @@ COLUMNAS_NUEVAS = {
     # cuenta como respuesta. Es justo al reves: el mail nunca llego a destino.
     "rebotada": "INTEGER NOT NULL DEFAULT 0",
     "rebotada_en": "TEXT NOT NULL DEFAULT ''",
+    # La marca "me dijeron que no". La pone el usuario a mano desde el panel: leer la
+    # respuesta y decidir si es un rechazo es algo que hace mejor una persona, y una
+    # postulacion dada por perdida por error es un error caro.
+    "descartada": "INTEGER NOT NULL DEFAULT 0",
+    "descartada_en": "TEXT NOT NULL DEFAULT ''",
 }
 
 # Donde busca el buscador del panel. El texto del post es la razon de ser de todo esto:
@@ -144,6 +149,22 @@ def marcar_rebotada(con: sqlite3.Connection, id_fila: int, cuando: str = "") -> 
     con.commit()
 
 
+def marcar_descartada(
+    con: sqlite3.Connection, id_fila: int, descartada: bool = True, cuando: str = ""
+) -> None:
+    """La pone y la saca el usuario desde el panel. Se puede deshacer: marcar por error una
+    postulacion que seguia viva no puede costar la postulacion."""
+    con.execute(
+        "UPDATE postulaciones SET descartada = ?, descartada_en = ? WHERE id = ?",
+        (
+            int(descartada),
+            (cuando or datetime.now().isoformat(timespec="seconds")) if descartada else "",
+            id_fila,
+        ),
+    )
+    con.commit()
+
+
 def buscar_por_email(con: sqlite3.Connection, email: str) -> list[sqlite3.Row]:
     """Todas las postulaciones enviadas a esa direccion, de la mas nueva a la mas vieja."""
     return con.execute(
@@ -186,10 +207,11 @@ def sin_responder(con: sqlite3.Connection) -> list[sqlite3.Row]:
 
     Las que rebotaron quedan afuera igual que las respondidas. No es que esten resueltas:
     es que no va a llegar nada, y revisarlas cada media hora seria etiquetar el mismo
-    rebote para siempre.
+    rebote para siempre. Las descartadas a mano, lo mismo: ya sabemos como termino.
     """
     return con.execute(
-        "SELECT * FROM postulaciones WHERE respondida = 0 AND rebotada = 0 "
+        "SELECT * FROM postulaciones "
+        "WHERE respondida = 0 AND rebotada = 0 AND descartada = 0 "
         "ORDER BY enviada_en DESC"
     ).fetchall()
 

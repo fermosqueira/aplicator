@@ -101,6 +101,13 @@ class Seguridad(ServidorLevantado):
         # El historial tiene datos de recruiters: no puede quedar abierto.
         self.assertEqual(self.pedir("/buscar", {"q": ""}, token=None)[0], 403)
 
+    def test_descartar_tambien_esta_protegido(self):
+        # Escribe en la base: una pagina cualquiera no puede marcarte postulaciones.
+        self.assertEqual(self.pedir("/descartar", {"id": 1}, token=None)[0], 403)
+        self.assertEqual(
+            self.pedir("/descartar", {"id": 1}, origen="https://malicioso.com")[0], 403
+        )
+
     def test_la_extension_si_pasa(self):
         codigo, _ = self.pedir(
             "/sugerir", {"email": "a@x.com"}, origen="chrome-extension://loquesea"
@@ -157,6 +164,32 @@ class Rutas(ServidorLevantado):
         fila = cuerpo["filas"][0]
         self.assertEqual(fila["rebotada"], 1)
         self.assertEqual(fila["sugerencia_dominio"], "gmail.com")
+
+    def test_descartar_marca_y_desmarca(self):
+        import almacen
+        with almacen.sesion(Path(self.tmp.name) / "test.db") as con:
+            id_fila = almacen.guardar(con, email="descarte@acme.com", empresa="Acme")
+
+        codigo, cuerpo = self.pedir("/descartar", {"id": id_fila, "descartada": True})
+        self.assertEqual(codigo, 200)
+        self.assertTrue(cuerpo["ok"])
+
+        _, listado = self.pedir("/buscar", {"q": "descarte@acme.com"})
+        self.assertEqual(listado["filas"][0]["descartada"], 1)
+
+        self.pedir("/descartar", {"id": id_fila, "descartada": False})
+        _, listado = self.pedir("/buscar", {"q": "descarte@acme.com"})
+        self.assertEqual(listado["filas"][0]["descartada"], 0)
+
+    def test_descartar_una_fila_que_no_existe_es_error_de_pedido(self):
+        # 400 y no 500: el pedido esta mal, el servidor no.
+        codigo, cuerpo = self.pedir("/descartar", {"id": 999999})
+        self.assertEqual(codigo, 400)
+        self.assertFalse(cuerpo["ok"])
+
+    def test_descartar_sin_id_no_revienta(self):
+        self.assertEqual(self.pedir("/descartar", {})[0], 400)
+        self.assertEqual(self.pedir("/descartar", {"id": "no-es-un-numero"})[0], 400)
 
     def test_ping_informa_la_ultima_revision(self):
         # El revisor corre sin ventana: sin esto no hay forma de saber si sigue vivo.

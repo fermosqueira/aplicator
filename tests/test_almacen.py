@@ -114,6 +114,32 @@ class EstadoDeLaPostulacion(unittest.TestCase):
         almacen.marcar_rebotada(self.con, self.id)
         self.assertEqual(almacen.sin_responder(self.con), [])
 
+    def test_descartar_a_mano(self):
+        almacen.marcar_descartada(self.con, self.id)
+        fila = self.fila()
+        self.assertEqual(fila["descartada"], 1)
+        self.assertTrue(fila["descartada_en"])
+        self.assertEqual(almacen.sin_responder(self.con), [])
+
+    def test_descartar_se_puede_deshacer(self):
+        # Marcar por error una postulacion que seguia viva no puede costar la postulacion.
+        almacen.marcar_descartada(self.con, self.id)
+        almacen.marcar_descartada(self.con, self.id, descartada=False)
+
+        fila = self.fila()
+        self.assertEqual(fila["descartada"], 0)
+        self.assertEqual(fila["descartada_en"], "")   # sin fecha colgada de antes
+        self.assertEqual(len(almacen.sin_responder(self.con)), 1)
+
+    def test_descartar_no_pisa_la_respuesta(self):
+        # Son datos distintos: "contestaron" y "lo que contestaron fue que no".
+        almacen.marcar_respondida(self.con, self.id, "2026-08-14T10:00:00")
+        almacen.marcar_descartada(self.con, self.id)
+
+        fila = self.fila()
+        self.assertEqual(fila["respondida"], 1)
+        self.assertEqual(fila["descartada"], 1)
+
 
 class Sesion(unittest.TestCase):
     def test_la_sesion_cierra_la_conexion(self):

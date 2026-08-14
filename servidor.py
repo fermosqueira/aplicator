@@ -181,6 +181,7 @@ class Manejador(BaseHTTPRequestHandler):
             "/enviar": self._enviar,
             "/buscar": self._buscar,
             "/respuestas": self._respuestas,
+            "/descartar": self._descartar,
         }
         accion = rutas.get(ruta)
         if accion is None:
@@ -249,6 +250,27 @@ class Manejador(BaseHTTPRequestHandler):
                 item["sugerencia_dominio"] = plantillas.dominio_sospechoso(item["email"])
             salida.append(item)
         return {"ok": True, "filas": salida}
+
+    def _descartar(self, datos: dict) -> dict:
+        """Marca (o desmarca) una postulacion como 'me dijeron que no'.
+
+        La ruta toca una sola columna a proposito. Un endpoint generico que reciba el
+        nombre del campo a escribir es una puerta abierta: aca el pedido solo puede decir
+        cual fila y si va o no va.
+        """
+        try:
+            id_fila = int(datos.get("id"))
+        except (TypeError, ValueError):
+            raise ValueError("Falta el id de la postulación")
+
+        descartada = bool(datos.get("descartada", True))
+        with almacen.sesion(self.ruta_db) as con:
+            if not con.execute(
+                "SELECT 1 FROM postulaciones WHERE id = ?", (id_fila,)
+            ).fetchone():
+                raise ValueError(f"No existe la postulación {id_fila}")
+            almacen.marcar_descartada(con, id_fila, descartada)
+        return {"ok": True, "id": id_fila, "descartada": descartada}
 
     def _respuestas(self, datos: dict) -> dict:
         return revisar(self.ruta_db)

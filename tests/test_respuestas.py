@@ -14,7 +14,36 @@ from pathlib import Path
 from comun import armar_config
 
 import almacen
+import correo
 import nucleo
+
+
+class Rebotes(unittest.TestCase):
+    """Quien escribio el mensaje: una persona o un servidor avisando que algo fallo."""
+
+    def test_reconoce_los_avisos_de_sistema(self):
+        for de in (
+            "Mail Delivery Subsystem <mailer-daemon@googlemail.com>",
+            "MAILER-DAEMON@acme.com",
+            "postmaster@outlook.com",
+        ):
+            with self.subTest(de=de):
+                self.assertTrue(correo.es_rebote(de))
+
+    def test_no_confunde_a_una_persona_con_un_rebote(self):
+        # El falso positivo es el error caro: daria por perdida una postulacion que si llego.
+        for de in (
+            "Ana <ana@acme.com>",
+            "Contacto Pepiln <contacto@pepiln.com>",
+            "no-reply@recluit.com",          # automatico, pero es una respuesta de verdad
+            "daniel.mailer@acme.com",        # el apellido no lo convierte en un daemon
+        ):
+            with self.subTest(de=de):
+                self.assertFalse(correo.es_rebote(de))
+
+    def test_entrada_vacia(self):
+        self.assertFalse(correo.es_rebote(""))
+        self.assertFalse(correo.es_rebote(None))
 
 
 class BuzonFalso:
@@ -145,9 +174,75 @@ class Deteccion(unittest.TestCase):
         self.assertEqual(buzon.copiados, [])
 
     def test_sin_pendientes_no_toca_el_buzon(self):
-        resultado = nucleo.detectar_respuestas(self.cfg, self.con, BuzonFalso({}))
+        # Importa mas ahora que antes: esto corre solo cada media hora, y no tiene sentido
+        # loguearse a Gmail para descubrir que no habia trabajo.
+        buzon = BuzonFalso({})
+        resultado = nucleo.detectar_respuestas(self.cfg, self.con, buzon)
         self.assertEqual(resultado["revisadas"], 0)
         self.assertEqual(resultado["nuevas"], [])
+        self.assertIsNone(buzon.carpeta_abierta)
+
+    def test_un_rebote_no_es_una_respuesta(self):
+        # Caso real: la postulacion a "@gmail.co" (sin la m) reboto, y el mailer-daemon
+        # contesta por el mismo hilo desde una direccion ajena. Sin distinguirlo, la
+        # postulacion figuraba como contestada cuando en realidad nunca llego a nadie.
+        self.postular(hilo="123")
+        buzon = BuzonFalso({"123": [
+            {"from": "Nombre Apellido <prueba@ejemplo.com>", "date": "Fri, 1 Aug 2026 10:00:00 -0300"},
+            {"from": "Mail Delivery Subsystem <mailer-daemon@googlemail.com>",
+             "date": "Fri, 1 Aug 2026 10:00:12 -0300"},
+        ]})
+
+        resultado = nucleo.detectar_respuestas(self.cfg, self.con, buzon)
+
+        self.assertEqual(resultado["nuevas"], [])
+        self.assertEqual(len(resultado["rebotes"]), 1)
+        fila = almacen.buscar_por_email(self.con, "rrhh@acme.com")[0]
+        self.assertEqual(fila["respondida"], 0)
+        self.assertEqual(fila["rebotada"], 1)
+        self.assertTrue(fila["rebotada_en"].startswith("2026-08-01"))
+
+    def test_el_rebote_igual_se_etiqueta(self):
+        # Es justo el mensaje que uno quiere encontrar despues en la bandeja.
+        self.postular(hilo="123")
+        buzon = BuzonFalso({"123": [
+            {"from": "mailer-daemon@googlemail.com", "date": "Fri, 1 Aug 2026 10:00:12 -0300"},
+        ]})
+
+        nucleo.detectar_respuestas(self.cfg, self.con, buzon)
+
+        self.assertEqual(buzon.copiados, [("123:0", "Postulaciones/Acme")])
+
+    def test_si_hay_rebote_y_respuesta_manda_la_respuesta(self):
+        # El rebote viene primero en el hilo. Cortar en el primer mensaje ajeno daria
+        # "rebotada" a una postulacion que si fue contestada.
+        self.postular(hilo="123")
+        buzon = BuzonFalso({"123": [
+            {"from": "postmaster@acme.com", "date": "Fri, 1 Aug 2026 10:00:12 -0300"},
+            {"from": "Ana <rrhh@acme.com>", "date": "Mon, 4 Aug 2026 09:30:00 -0300"},
+        ]})
+
+        resultado = nucleo.detectar_respuestas(self.cfg, self.con, buzon)
+
+        self.assertEqual(len(resultado["nuevas"]), 1)
+        self.assertEqual(resultado["rebotes"], [])
+        fila = almacen.buscar_por_email(self.con, "rrhh@acme.com")[0]
+        self.assertEqual(fila["respondida"], 1)
+        self.assertEqual(fila["rebotada"], 0)
+
+    def test_una_rebotada_no_se_revisa_de_nuevo(self):
+        # Si siguiera en la lista de pendientes, cada media hora volveria a etiquetar el
+        # mismo rebote, para siempre.
+        self.postular(hilo="123")
+        buzon = BuzonFalso({"123": [
+            {"from": "mailer-daemon@googlemail.com", "date": "Fri, 1 Aug 2026 10:00:12 -0300"},
+        ]})
+        nucleo.detectar_respuestas(self.cfg, self.con, buzon)
+
+        segunda = nucleo.detectar_respuestas(self.cfg, self.con, buzon)
+
+        self.assertEqual(segunda["revisadas"], 0)
+        self.assertEqual(len(buzon.copiados), 1)
 
     def test_una_fecha_ilegible_no_pierde_la_respuesta(self):
         self.postular(hilo="123")

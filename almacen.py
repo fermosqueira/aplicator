@@ -42,6 +42,10 @@ COLUMNAS_NUEVAS = {
     "hilo": "TEXT NOT NULL DEFAULT ''",
     "respondida": "INTEGER NOT NULL DEFAULT 0",
     "respondida_en": "TEXT NOT NULL DEFAULT ''",
+    # Un rebote llega por el mismo hilo y de una direccion ajena, o sea que sin esto se
+    # cuenta como respuesta. Es justo al reves: el mail nunca llego a destino.
+    "rebotada": "INTEGER NOT NULL DEFAULT 0",
+    "rebotada_en": "TEXT NOT NULL DEFAULT ''",
 }
 
 # Donde busca el buscador del panel. El texto del post es la razon de ser de todo esto:
@@ -117,9 +121,24 @@ def guardar_hilo(con: sqlite3.Connection, id_fila: int, hilo: str) -> None:
     con.commit()
 
 
+# Respondida y rebotada se excluyen: o alguien contesto, o el mail no llego. Cada marca
+# limpia la otra en el mismo UPDATE. Sin esto una fila puede terminar con las dos puestas
+# —paso de verdad, con una version vieja del detector corriendo en paralelo— y ahi el
+# historial afirma dos cosas contrarias sobre la misma postulacion.
 def marcar_respondida(con: sqlite3.Connection, id_fila: int, cuando: str = "") -> None:
     con.execute(
-        "UPDATE postulaciones SET respondida = 1, respondida_en = ? WHERE id = ?",
+        "UPDATE postulaciones SET respondida = 1, respondida_en = ?, "
+        "rebotada = 0, rebotada_en = '' WHERE id = ?",
+        (cuando or datetime.now().isoformat(timespec="seconds"), id_fila),
+    )
+    con.commit()
+
+
+def marcar_rebotada(con: sqlite3.Connection, id_fila: int, cuando: str = "") -> None:
+    """El mail no llego. Distinto de respondida: no hay nadie del otro lado esperando."""
+    con.execute(
+        "UPDATE postulaciones SET rebotada = 1, rebotada_en = ?, "
+        "respondida = 0, respondida_en = '' WHERE id = ?",
         (cuando or datetime.now().isoformat(timespec="seconds"), id_fila),
     )
     con.commit()
@@ -163,9 +182,15 @@ def buscar(con: sqlite3.Connection, consulta: str = "", limite: int = 200) -> li
 
 
 def sin_responder(con: sqlite3.Connection) -> list[sqlite3.Row]:
-    """Las que todavia esperan respuesta: lo que recorre el detector."""
+    """Las que todavia esperan respuesta: lo que recorre el detector.
+
+    Las que rebotaron quedan afuera igual que las respondidas. No es que esten resueltas:
+    es que no va a llegar nada, y revisarlas cada media hora seria etiquetar el mismo
+    rebote para siempre.
+    """
     return con.execute(
-        "SELECT * FROM postulaciones WHERE respondida = 0 ORDER BY enviada_en DESC"
+        "SELECT * FROM postulaciones WHERE respondida = 0 AND rebotada = 0 "
+        "ORDER BY enviada_en DESC"
     ).fetchall()
 
 

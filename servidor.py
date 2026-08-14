@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+import time
 import traceback
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +29,60 @@ import plantillas
 LIMITE_CUERPO = 256 * 1024
 ARRANQUE = datetime.now().strftime("%d/%m %H:%M")
 RUTA_LOG = Path(__file__).resolve().parent / "servidor.log"
+
+# La primera revision no arranca junto con el servidor: si esto se levanto con Windows, la
+# red todavia puede no estar lista. Un minuto y medio alcanza y no se nota.
+ESPERA_INICIAL = 90
+CADA_POR_DEFECTO = 30  # minutos
+
+# El detector no puede correr dos veces a la vez. Si el revisor automatico y el boton del
+# panel se cruzan, las dos pasadas verian la misma postulacion como pendiente y le pegarian
+# la etiqueta dos veces.
+_candado = threading.Lock()
+ULTIMA_REVISION = {"cuando": "", "resultado": "todavía no revisó"}
+
+
+def _log(mensaje: str) -> None:
+    """Con la hora adelante. Un log sin hora no sirve para reconstruir en que orden paso
+    algo, que es lo unico para lo que uno lo abre."""
+    print(f"  [{datetime.now():%H:%M:%S}] {mensaje}")
+
+
+def revisar(ruta_db=None) -> dict:
+    """Una pasada del detector. La comparten el boton del panel y el revisor automatico."""
+    with _candado:
+        cfg = plantillas.cargar_config()  # necesita credenciales: habla con Gmail
+        with almacen.sesion(ruta_db) as con:
+            resultado = nucleo.detectar_respuestas(cfg, con)
+
+        ULTIMA_REVISION["cuando"] = datetime.now().strftime("%d/%m %H:%M")
+        ULTIMA_REVISION["resultado"] = (
+            f"{len(resultado['nuevas'])} respuesta(s), {len(resultado['rebotes'])} rebote(s)"
+            f" sobre {resultado['revisadas']} pendiente(s)"
+        )
+        return resultado
+
+
+def _revisor(ruta_db=None, cada_minutos: int = CADA_POR_DEFECTO) -> None:
+    """Bucle de fondo. Sin esto el detector es una funcion que hay que acordarse de correr,
+    para algo que pasa semanas despues: o sea, una funcion que en la practica no existe."""
+    time.sleep(ESPERA_INICIAL)
+    while True:
+        try:
+            resultado = revisar(ruta_db)
+            # Una linea por pasada aunque no haya novedades: esto corre sin ventana y sin
+            # avisar, y un proceso invisible que no deja rastro no se distingue de uno
+            # muerto. Son 48 lineas por dia.
+            _log(ULTIMA_REVISION["resultado"])
+            for r in resultado["nuevas"]:
+                _log(f"respuesta de {r['empresa'] or r['email']}")
+            for r in resultado["rebotes"]:
+                _log(f"REBOTE en {r['email']} - el mail nunca llego")
+        except Exception as e:
+            # Que falle una revision no puede tumbar el servidor: el envio tiene que seguir
+            # andando aunque Gmail este caido o falte la clave.
+            _log(f"revision fallida: {type(e).__name__}: {e}")
+        time.sleep(max(60, cada_minutos * 60))
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -81,7 +137,7 @@ class Manejador(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(largo).decode("utf-8"))
 
     def log_message(self, formato, *args):  # noqa: N802  (lo pide BaseHTTPRequestHandler)
-        print(f"  {self.command} {self.path} -> {args[1] if len(args) > 1 else ''}")
+        _log(f"{self.command} {self.path} -> {args[1] if len(args) > 1 else ''}")
 
     # --- rutas -------------------------------------------------------------------
 
@@ -95,7 +151,11 @@ class Manejador(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         ruta = self.path.split("?")[0].rstrip("/") or "/"
         if ruta == "/ping":
-            self._responder(200, {"ok": True, "servicio": "aplicador", "desde": ARRANQUE})
+            self._responder(200, {
+                "ok": True, "servicio": "aplicador", "desde": ARRANQUE,
+                "ultima_revision": ULTIMA_REVISION["cuando"],
+                "resultado_revision": ULTIMA_REVISION["resultado"],
+            })
         elif ruta in ("/", "/historial"):
             cuerpo = panel.render(self.ajustes["token"], ARRANQUE)
             self.send_response(200)
@@ -129,6 +189,11 @@ class Manejador(BaseHTTPRequestHandler):
 
         try:
             self._responder(200, accion(self._leer_json()))
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # El navegador se cansó de esperar y cortó. Revisar respuestas puede tardar
+            # bastante contra Gmail. El trabajo del servidor ya se hizo; lo unico que se
+            # perdio es el aviso. Intentar contestar un 500 aca solo suma otro traceback.
+            _log(f"{self.path}: el cliente corto antes de la respuesta (el trabajo se hizo)")
         except (ValueError, FileNotFoundError) as e:
             self._responder(400, {"ok": False, "error": str(e)})
         except Exception as e:
@@ -174,12 +239,19 @@ class Manejador(BaseHTTPRequestHandler):
     def _buscar(self, datos: dict) -> dict:
         with almacen.sesion(self.ruta_db) as con:
             filas = almacen.buscar(con, datos.get("q") or "")
-        return {"ok": True, "filas": [dict(f) for f in filas]}
+
+        salida = []
+        for fila in filas:
+            item = dict(fila)
+            # Solo para las que rebotaron: si el dominio se parece a uno conocido, decirlo.
+            # Es la diferencia entre "no llego" y "no llego, y mira que te falto una letra".
+            if item.get("rebotada"):
+                item["sugerencia_dominio"] = plantillas.dominio_sospechoso(item["email"])
+            salida.append(item)
+        return {"ok": True, "filas": salida}
 
     def _respuestas(self, datos: dict) -> dict:
-        cfg = plantillas.cargar_config()  # necesita credenciales: habla con Gmail
-        with almacen.sesion(self.ruta_db) as con:
-            return nucleo.detectar_respuestas(cfg, con)
+        return revisar(self.ruta_db)
 
     def _enviar(self, datos: dict) -> dict:
         # El envio si necesita credenciales: las releemos por si acabas de cargarlas.
@@ -211,10 +283,18 @@ def main() -> int:
     cfg = plantillas.cargar_config(exigir_clave=False)
     servidor = crear_servidor(cfg)
     puerto = servidor.server_address[1]
+
+    # El revisor se lanza aca y no en crear_servidor() a proposito: asi los tests, que usan
+    # la fabrica, nunca levantan un hilo que se conectaria a Gmail de verdad.
+    cada = int(cfg["servidor"].get("revisar_cada_minutos", CADA_POR_DEFECTO))
+    if cada > 0:
+        threading.Thread(target=_revisor, args=(None, cada), daemon=True).start()
+
     # Sin acentos ni simbolos: el log se lee con herramientas que asumen ANSI y los
     # destrozan. Un log no necesita adornos.
     print(f"[{ARRANQUE}] Aplicador escuchando en http://127.0.0.1:{puerto}"
           f" - historial: http://127.0.0.1:{puerto}/historial")
+    print(f"  revisando respuestas cada {cada} min" if cada > 0 else "  revision automatica apagada")
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:

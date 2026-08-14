@@ -39,6 +39,7 @@
   "servidor": {
     "puerto": 8765,
     "token": "GENERA_UNO_CON: python -c \"import secrets; print(secrets.token_urlsafe(24))\"",
-    "origenes": ["https://www.linkedin.com", "https://linkedin.com"]
+    "origenes": ["https://www.linkedin.com", "https://linkedin.com"],
+    "revisar_cada_minutos": 30
   }
 }

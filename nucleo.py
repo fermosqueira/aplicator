@@ -139,16 +139,43 @@ def detectar_respuestas(cfg: dict, con: sqlite3.Connection, buzon=None) -> dict:
     El `buzon` se puede inyectar: los tests le pasan un doble y asi el emparejamiento se
     prueba sin tocar la casilla real.
     """
+    # Sin pendientes no hay nada que mirar, y conviene saberlo antes de abrir la conexion:
+    # esto ahora corre solo cada media hora, y no tiene sentido loguearse a Gmail para
+    # descubrir que no habia trabajo.
+    if not almacen.sin_responder(con):
+        return {"ok": True, "revisadas": 0, "nuevas": [], "rebotes": []}
+
     if buzon is not None:
         return _emparejar(cfg, con, buzon)
     with correo.Buzon(cfg) as bz:
         return _emparejar(cfg, con, bz)
 
 
+def _clasificar(buzon, uids, propio) -> tuple[tuple | None, tuple | None]:
+    """Separa lo que hay en el hilo en (respuesta de una persona, rebote del servidor).
+
+    Se recorre todo antes de decidir en vez de cortar en el primer mensaje ajeno: un hilo
+    puede tener un rebote de un intento y despues una respuesta de verdad, y ahi manda la
+    respuesta.
+    """
+    respuesta = rebote = None
+    for uid in uids:
+        cabeceras = buzon.cabeceras(uid)
+        de = (cabeceras.get("from") or "").lower()
+        if propio in de:
+            continue  # es nuestro propio mensaje dentro del hilo
+        if correo.es_rebote(de):
+            rebote = rebote or (uid, cabeceras)
+            continue
+        respuesta = (uid, cabeceras)
+        break
+    return respuesta, rebote
+
+
 def _emparejar(cfg: dict, con: sqlite3.Connection, buzon) -> dict:
     pendientes = almacen.sin_responder(con)
     propio = cfg["remitente"]["email"].strip().lower()
-    nuevas = []
+    nuevas, rebotes = [], []
 
     if pendientes:
         buzon.abrir(buzon.carpeta_todos())
@@ -160,28 +187,34 @@ def _emparejar(cfg: dict, con: sqlite3.Connection, buzon) -> dict:
         if not uids:
             uids = buzon.uids_de(fila["email"], _fecha_de(fila["enviada_en"]))
 
-        for uid in uids:
-            cabeceras = buzon.cabeceras(uid)
-            if propio in (cabeceras.get("from") or "").lower():
-                continue  # es nuestro propio mensaje dentro del hilo
+        respuesta, rebote = _clasificar(buzon, uids, propio)
+        if not respuesta and not rebote:
+            continue
 
-            cuando = _fecha_del_mensaje(cabeceras.get("date"))
-            buzon.crear_etiqueta(fila["etiqueta"])
-            # Etiquetar tambien la respuesta: asi el dato se ve en la bandeja sin depender
-            # de como Gmail agrupe las conversaciones.
-            buzon.copiar(uid, fila["etiqueta"])
+        uid, cabeceras = respuesta or rebote
+        cuando = _fecha_del_mensaje(cabeceras.get("date"))
+        buzon.crear_etiqueta(fila["etiqueta"])
+        # Etiquetar tambien el mensaje que llego: asi el dato se ve en la bandeja sin
+        # depender de como Gmail agrupe las conversaciones. Tambien el rebote, que es
+        # justo el mensaje que uno quiere encontrar despues.
+        buzon.copiar(uid, fila["etiqueta"])
+
+        detalle = {
+            "id": fila["id"],
+            "email": fila["email"],
+            "empresa": fila["empresa"],
+            "puesto": fila["puesto"],
+            "de": cabeceras.get("from", ""),
+            "cuando": cuando,
+        }
+        if respuesta:
             almacen.marcar_respondida(con, fila["id"], cuando)
-            nuevas.append({
-                "id": fila["id"],
-                "email": fila["email"],
-                "empresa": fila["empresa"],
-                "puesto": fila["puesto"],
-                "de": cabeceras.get("from", ""),
-                "cuando": cuando,
-            })
-            break
+            nuevas.append(detalle)
+        else:
+            almacen.marcar_rebotada(con, fila["id"], cuando)
+            rebotes.append(detalle)
 
-    return {"ok": True, "revisadas": len(pendientes), "nuevas": nuevas}
+    return {"ok": True, "revisadas": len(pendientes), "nuevas": nuevas, "rebotes": rebotes}
 
 
 def _fecha_de(iso: str) -> datetime:

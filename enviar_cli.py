@@ -85,12 +85,16 @@ def cmd_respuestas() -> int:
     resultado = nucleo.detectar_respuestas(cfg, con)
 
     _rotulo(f"Revisadas {resultado['revisadas']} postulaciones pendientes")
-    if not resultado["nuevas"]:
-        print("  Sin respuestas nuevas.")
+    if not resultado["nuevas"] and not resultado["rebotes"]:
+        print("  Sin novedades.")
         return 0
+
     for n in resultado["nuevas"]:
         print(f"  {n['empresa'] or n['email']} · {n['puesto'] or '—'}")
         print(f"    respondio {n['de']} el {n['cuando'][:10]}")
+    for n in resultado["rebotes"]:
+        print(f"  ERROR · {n['email']}")
+        print("    el mail reboto y nunca llego: esta postulacion NO esta hecha.")
     return 0
 
 

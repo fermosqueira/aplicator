@@ -74,6 +74,47 @@ class Registro(unittest.TestCase):
         self.assertEqual(len(almacen.listar(self.con, limite=3)), 3)
 
 
+class EstadoDeLaPostulacion(unittest.TestCase):
+    """Respondida y rebotada se excluyen. Una fila con las dos marcas afirma dos cosas
+    contrarias sobre la misma postulacion, y el panel muestra una de ellas al azar."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.con = almacen.conectar(Path(self.tmp.name) / "estado.db")
+        self.addCleanup(self.con.close)
+        self.id = almacen.guardar(self.con, email="rrhh@acme.com", empresa="Acme")
+
+    def fila(self):
+        return almacen.buscar_por_email(self.con, "rrhh@acme.com")[0]
+
+    def test_marcar_rebotada_limpia_respondida(self):
+        # Paso de verdad: una version vieja del detector, corriendo en paralelo, tomo un
+        # rebote por una respuesta y dejo la fila con las dos marcas puestas.
+        almacen.marcar_respondida(self.con, self.id, "2026-08-14T10:00:00")
+        almacen.marcar_rebotada(self.con, self.id, "2026-08-14T10:00:12")
+
+        fila = self.fila()
+        self.assertEqual(fila["rebotada"], 1)
+        self.assertEqual(fila["respondida"], 0)
+        self.assertEqual(fila["respondida_en"], "")
+
+    def test_marcar_respondida_limpia_rebotada(self):
+        # Al reves tambien: si despues del rebote contesta alguien, gana la respuesta.
+        almacen.marcar_rebotada(self.con, self.id, "2026-08-14T10:00:12")
+        almacen.marcar_respondida(self.con, self.id, "2026-08-15T09:00:00")
+
+        fila = self.fila()
+        self.assertEqual(fila["respondida"], 1)
+        self.assertEqual(fila["rebotada"], 0)
+        self.assertEqual(fila["rebotada_en"], "")
+
+    def test_las_dos_sacan_la_fila_de_pendientes(self):
+        self.assertEqual(len(almacen.sin_responder(self.con)), 1)
+        almacen.marcar_rebotada(self.con, self.id)
+        self.assertEqual(almacen.sin_responder(self.con), [])
+
+
 class Sesion(unittest.TestCase):
     def test_la_sesion_cierra_la_conexion(self):
         # `with sqlite3.connect(...)` NO cierra: maneja la transaccion. Por eso existe

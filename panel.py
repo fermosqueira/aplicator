@@ -19,11 +19,13 @@ PAGINA = """<!doctype html>
   :root {
     --fondo: #f4f2ee; --tarjeta: #fff; --texto: #1d2226; --suave: #5f6468;
     --borde: #e0dfdc; --azul: #0a66c2; --verde: #1d5c30; --verde-fondo: #e9f5ec;
+    --rojo: #8a1c1c; --rojo-fondo: #fbeaea;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --fondo: #1b1f23; --tarjeta: #22272b; --texto: #e8e6e3; --suave: #9aa0a6;
       --borde: #363c42; --azul: #6cb1f5; --verde: #a5d3b2; --verde-fondo: #23342a;
+      --rojo: #f0a5a5; --rojo-fondo: #3a2424;
     }
   }
   * { box-sizing: border-box; }
@@ -66,6 +68,10 @@ PAGINA = """<!doctype html>
   .marca-si { color: var(--verde); background: var(--verde-fondo); border-radius: 10px;
     padding: 2px 8px; font-size: 11px; font-weight: 600; text-align: center; }
   .marca-no { color: var(--suave); font-size: 11px; text-align: center; }
+  .marca-rebote { color: var(--rojo); background: var(--rojo-fondo); border-radius: 10px;
+    padding: 2px 8px; font-size: 11px; font-weight: 600; text-align: center; }
+  .aviso-rebote { margin-top: 10px; padding: 10px 12px; border-radius: 6px;
+    background: var(--rojo-fondo); color: var(--rojo); font-size: 12px; }
 
   .detalle { display: none; padding: 0 14px 14px; border-top: 1px solid var(--borde); }
   .fila.abierta .detalle { display: block; }
@@ -84,7 +90,7 @@ PAGINA = """<!doctype html>
 <div class="caja">
   <header>
     <h1>Postulaciones</h1>
-    <span class="estado"><span class="punto"></span> servidor activo desde __ARRANQUE__</span>
+    <span class="estado" id="estado"><span class="punto"></span> servidor activo desde __ARRANQUE__</span>
   </header>
 
   <div class="controles">
@@ -110,6 +116,14 @@ async function pedir(ruta, datos) {
 
 const esc = (t) => { const d = document.createElement("div"); d.textContent = t ?? ""; return d.innerHTML; };
 
+// Tres estados, no dos. Un rebote no es una respuesta: el mail nunca llegó a nadie. Dice
+// "error" y no "respondida" justamente para que la oferta no quede dada por cerrada.
+function estadoDe(f) {
+  if (f.rebotada) return { clase: "marca-rebote", texto: "error" };
+  if (f.respondida) return { clase: "marca-si", texto: "respondida" };
+  return { clase: "marca-no", texto: "sin respuesta" };
+}
+
 function pintar(filas) {
   const listado = document.getElementById("listado");
   const resumen = document.getElementById("resumen");
@@ -121,19 +135,30 @@ function pintar(filas) {
   }
 
   const respondidas = filas.filter((f) => f.respondida).length;
-  resumen.textContent = `${filas.length} postulación${filas.length === 1 ? "" : "es"} · ${respondidas} respondida${respondidas === 1 ? "" : "s"}`;
+  const conError = filas.filter((f) => f.rebotada).length;
+  // "postulación" pierde el acento en plural: no alcanza con pegarle "es" atrás.
+  resumen.textContent =
+    `${filas.length} ${filas.length === 1 ? "postulación" : "postulaciones"} · ` +
+    `${respondidas} respondida${respondidas === 1 ? "" : "s"}` +
+    (conError ? ` · ${conError} con error, sin enviar` : "");
 
-  listado.innerHTML = filas.map((f) => `
+  listado.innerHTML = filas.map((f) => {
+    const estado = estadoDe(f);
+    return `
     <div class="fila">
       <div class="cabecera">
         <span class="fecha">${esc(f.enviada_en.slice(0, 10))}</span>
         <span class="empresa">${esc(f.empresa || "—")}</span>
         <span class="puesto">${esc(f.puesto || "—")}</span>
-        <span class="${f.respondida ? "marca-si" : "marca-no"}">${f.respondida ? "respondida" : "sin respuesta"}</span>
+        <span class="${estado.clase}">${estado.texto}</span>
       </div>
       <div class="detalle">
         <div class="dato"><b>${esc(f.email)}</b>${f.recruiter ? " · " + esc(f.recruiter) : ""}</div>
         ${f.autor_post ? `<div class="dato">Publicado por <b>${esc(f.autor_post)}</b></div>` : ""}
+        ${f.rebotada ? `<div class="aviso-rebote">
+            <b>El mail no llegó.</b> Rebotó el ${esc((f.rebotada_en || "").slice(0, 10))}, así que esta postulación no está hecha.
+            ${f.sugerencia_dominio ? `La dirección termina en <b>@${esc(f.email.split("@")[1] || "")}</b> y se parece a <b>@${esc(f.sugerencia_dominio)}</b>: probablemente sea un typo.` : "Revisá la publicación y confirmá la dirección."}
+          </div>` : ""}
         ${f.respondida_en ? `<div class="dato">Respondieron el <b>${esc(f.respondida_en.slice(0, 10))}</b></div>` : ""}
         ${f.texto_post ? `<div class="post">${esc(f.texto_post)}</div>` : '<div class="dato">Sin el texto del post: es anterior a que se empezara a guardar.</div>'}
         <div class="enlaces">
@@ -141,7 +166,8 @@ function pintar(filas) {
           ${f.hilo ? `<a href="https://mail.google.com/mail/u/0/#all/${esc(f.hilo)}" target="_blank" rel="noopener">Abrir el hilo en Gmail</a>` : ""}
         </div>
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 
   listado.querySelectorAll(".cabecera").forEach((c) =>
     c.addEventListener("click", () => c.parentElement.classList.toggle("abierta"))
@@ -171,14 +197,35 @@ document.getElementById("respuestas").addEventListener("click", async (e) => {
     return;
   }
   await buscar();
+  await estado();
+
+  const partes = [];
   if (r.nuevas.length) {
-    document.getElementById("resumen").textContent =
-      `${r.nuevas.length} respuesta${r.nuevas.length === 1 ? "" : "s"} nueva${r.nuevas.length === 1 ? "" : "s"}: ` +
-      r.nuevas.map((n) => `${n.empresa || n.email}`).join(", ");
+    partes.push(`${r.nuevas.length} respuesta${r.nuevas.length === 1 ? "" : "s"}: ` +
+      r.nuevas.map((n) => n.empresa || n.email).join(", "));
   }
+  if ((r.rebotes || []).length) {
+    partes.push(`${r.rebotes.length} con error (el mail no llegó): ` +
+      r.rebotes.map((n) => n.email).join(", "));
+  }
+  if (partes.length) document.getElementById("resumen").textContent = partes.join(" · ");
 });
 
+// El revisor corre solo cada media hora. Mostrar cuándo fue la última pasada es lo que
+// diferencia "no te contestó nadie" de "hace rato que no mira".
+async function estado() {
+  try {
+    const r = await (await fetch("/ping")).json();
+    const cuando = r.ultima_revision
+      ? `última revisión ${r.ultima_revision} (${r.resultado_revision})`
+      : "primera revisión en unos minutos";
+    document.getElementById("estado").innerHTML =
+      `<span class="punto"></span> activo desde ${esc(r.desde)} · ${esc(cuando)}`;
+  } catch (e) { /* si el servidor no responde, queda el texto del arranque */ }
+}
+
 buscar();
+estado();
 </script>
 </body>
 </html>

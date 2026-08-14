@@ -146,6 +146,24 @@ class Rutas(ServidorLevantado):
         self.assertTrue(cuerpo["ok"])
         self.assertIsInstance(cuerpo["filas"], list)
 
+    def test_una_fila_rebotada_trae_el_dominio_probable(self):
+        # Para que el panel pueda decir "te falto una letra" y no solo "no llego".
+        import almacen
+        with almacen.sesion(Path(self.tmp.name) / "test.db") as con:
+            id_fila = almacen.guardar(con, email="alguien@gmail.co", empresa="X")
+            almacen.marcar_rebotada(con, id_fila)
+
+        _, cuerpo = self.pedir("/buscar", {"q": "alguien@gmail.co"})
+        fila = cuerpo["filas"][0]
+        self.assertEqual(fila["rebotada"], 1)
+        self.assertEqual(fila["sugerencia_dominio"], "gmail.com")
+
+    def test_ping_informa_la_ultima_revision(self):
+        # El revisor corre sin ventana: sin esto no hay forma de saber si sigue vivo.
+        _, cuerpo = self.pedir("/ping", metodo="GET")
+        self.assertIn("ultima_revision", cuerpo)
+        self.assertIn("resultado_revision", cuerpo)
+
     def test_el_panel_es_same_origin(self):
         # Un pedido con el Origin del propio servidor tiene que pasar: es el del panel.
         codigo, _ = self.pedir(

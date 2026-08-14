@@ -56,11 +56,23 @@ puesto viaja en el asunto, así que la respuesta llega como `Re: Postulación QA
 con la empresa a la vista. Una etiqueta por postulación sería inmanejable a los cuarenta
 envíos; por eso la empresa va en la etiqueta y el puesto en el asunto.
 
-**El detector.** `Buscar respuestas` en el panel (o `--respuestas`) recorre las postulaciones
-pendientes, busca la conversación en Gmail por su `X-GM-THRID` y, cuando encuentra un mensaje
-que no es tuyo, marca la postulación como respondida y **le pone la etiqueta también al
-mensaje de respuesta**. Buscar por hilo y no por remitente hace que funcione aunque conteste
-otra persona de la empresa desde otra dirección.
+**El detector.** Recorre las postulaciones pendientes, busca la conversación en Gmail por su
+`X-GM-THRID` y, cuando encuentra un mensaje que no es tuyo, marca la postulación como
+respondida y **le pone la etiqueta también al mensaje de respuesta**. Buscar por hilo y no por
+remitente hace que funcione aunque conteste otra persona de la empresa desde otra dirección
+—pasó: una respuesta llegó desde `contacto@` cuando el envío había ido a `contacto+qa@`.
+
+Corre **solo, cada 30 minutos** mientras el servidor está arriba (`revisar_cada_minutos` en
+`config.json`; `0` lo apaga). También está el botón `Buscar respuestas` del panel y
+`--respuestas` por consola, pero son el atajo, no el mecanismo: algo que hay que acordarse de
+disparar, para algo que pasa semanas después, en la práctica no existe.
+
+**Rebotes.** Un mail que rebota vuelve por el mismo hilo y desde una dirección ajena, así que
+sin distinguirlo cuenta como respuesta y la postulación queda dada por cerrada cuando en
+realidad no llegó a nadie. Los mensajes de `mailer-daemon` y `postmaster` se marcan aparte y el
+panel los muestra como **error**, no como respondida; si el dominio se parece a uno conocido,
+la fila dice cuál —`@gmail.co` contra `@gmail.com`, que es el caso que costó una postulación
+de verdad. Si en el hilo hay un rebote *y* después una respuesta humana, gana la respuesta.
 
 **El post guardado.** Es lo que realmente resuelve el problema. Cuando responden un mes
 después, "QA Automation en Trustpeople" no alcanza para recordar de qué oferta se trataba: el

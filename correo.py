@@ -22,8 +22,22 @@ CABECERA_MARCA = "X-Aplicador-Id"
 MESES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
+# Buzones desde los que escriben los servidores, no las personas. Un rebote llega por el
+# mismo hilo y desde una direccion ajena, asi que sin esta lista cuenta como respuesta: la
+# postulacion a "@gmail.co" figuraria como contestada cuando en realidad nunca llego.
+REMITENTES_DE_SISTEMA = (
+    "mailer-daemon@", "postmaster@", "mail-daemon@", "no-reply@dmarc",
+)
+
+
 def nueva_marca() -> str:
     return uuid.uuid4().hex
+
+
+def es_rebote(remitente: str) -> bool:
+    """True si el mensaje lo escribio un servidor de correo avisando que algo fallo."""
+    de = (remitente or "").lower()
+    return any(marca in de for marca in REMITENTES_DE_SISTEMA)
 
 
 def _fecha_imap(fecha: datetime) -> str:

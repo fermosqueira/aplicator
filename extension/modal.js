@@ -279,6 +279,10 @@
           return;
         }
 
+        // Un dominio mal escrito por una letra es invisible al revisar el borrador y
+        // cuesta la postulacion entera: el mail rebota y nadie se entera.
+        (vista.avisos || []).forEach((a) => avisar("error", a));
+
         mensajes.querySelector(".previo")?.remove();
         const previo = document.createElement("div");
         previo.className = "previo";

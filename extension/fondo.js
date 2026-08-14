@@ -22,6 +22,19 @@ chrome.runtime.onMessage.addListener((mensaje, _emisor, responder) => {
   return true; // mantiene vivo el canal: la respuesta es asincronica
 });
 
+// Click en el icono de la barra: abre el historial. Si ya hay una pestaña con el panel,
+// la reutiliza en vez de acumular copias.
+chrome.action.onClicked.addListener(async () => {
+  const url = `${SERVIDOR}/historial`;
+  const abiertas = await chrome.tabs.query({ url: `${SERVIDOR}/*` });
+  if (abiertas.length) {
+    await chrome.tabs.update(abiertas[0].id, { active: true, url });
+    await chrome.windows.update(abiertas[0].windowId, { focused: true });
+  } else {
+    await chrome.tabs.create({ url });
+  }
+});
+
 async function consultar({ ruta, datos }) {
   if (!TOKEN) return { ok: false, error: "falta_token" };
   try {

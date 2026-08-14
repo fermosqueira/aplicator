@@ -66,6 +66,57 @@ class DeteccionDeEmpresa(unittest.TestCase):
         self.assertEqual(plantillas.detectar_empresa("no-es-un-mail"), "")
         self.assertEqual(plantillas.detectar_empresa(""), "")
 
+    def test_reconoce_al_proveedor_aunque_el_dominio_este_mal(self):
+        # Caso real: un mail a "@gmail.co" quedo etiquetado como empresa "Gmail".
+        # Se compara la primera etiqueta del dominio, no el dominio entero.
+        for email in ("a@gmail.co", "a@gmail.com.ar", "a@googlemail.com", "a@yahoo.com.ar"):
+            with self.subTest(email=email):
+                self.assertEqual(plantillas.detectar_empresa(email), "")
+
+
+class DominiosSospechosos(unittest.TestCase):
+    """Un dominio mal escrito por una letra es invisible al revisar el borrador, el mail
+    rebota y la postulacion se pierde sin que nadie se entere. Paso de verdad."""
+
+    def test_detecta_el_caso_que_costo_una_postulacion(self):
+        self.assertEqual(
+            plantillas.dominio_sospechoso("stackotechsolutions.career@gmail.co"), "gmail.com"
+        )
+
+    def test_detecta_otras_variantes_de_una_letra(self):
+        casos = {
+            "a@gmial.com": "gmail.com",
+            "a@hotmai.com": "hotmail.com",
+            "a@outlok.com": "outlook.com",
+            "a@yahooo.com": "yahoo.com",
+        }
+        for email, esperado in casos.items():
+            with self.subTest(email=email):
+                self.assertEqual(plantillas.dominio_sospechoso(email), esperado)
+
+    def test_no_molesta_con_los_dominios_correctos(self):
+        for email in ("a@gmail.com", "a@hotmail.com", "a@proton.me"):
+            with self.subTest(email=email):
+                self.assertEqual(plantillas.dominio_sospechoso(email), "")
+
+    def test_no_molesta_con_dominios_de_empresa(self):
+        # Lo importante: que no cante falsos positivos sobre direcciones legitimas, o se
+        # vuelve ruido y se ignora justo cuando importa.
+        for email in ("rrhh@acme.com", "jobs@globex.io", "renuka.m@spiceorb.com",
+                      "seleccion@mercadolibre.com", "a@gmx.com"):
+            with self.subTest(email=email):
+                self.assertEqual(plantillas.dominio_sospechoso(email), "")
+
+    def test_entrada_invalida(self):
+        self.assertEqual(plantillas.dominio_sospechoso("sin-arroba"), "")
+        self.assertEqual(plantillas.dominio_sospechoso(""), "")
+
+    def test_casi_igual(self):
+        self.assertTrue(plantillas._casi_igual("gmail.co", "gmail.com"))   # falta una
+        self.assertTrue(plantillas._casi_igual("gmial.com", "gmail.com"))  # cambiada
+        self.assertFalse(plantillas._casi_igual("gmail.com", "gmail.com")) # identicas
+        self.assertFalse(plantillas._casi_igual("acme.com", "gmail.com"))  # lejanas
+
 
 class Etiquetas(unittest.TestCase):
     def setUp(self):

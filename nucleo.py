@@ -38,6 +38,14 @@ def previsualizar(
     asunto, cuerpo = plantillas.armar(cfg, idioma, recruiter, empresa, puesto)
     ruta_cv = plantillas.ruta_cv(cfg, idioma)
 
+    avisos = []
+    parecido = plantillas.dominio_sospechoso(destino)
+    if parecido:
+        avisos.append(
+            f"El dominio de <b>{destino}</b> se parece a <b>{parecido}</b> por una sola letra. "
+            f"Si está mal, el mail rebota y la postulación se pierde sin que te enteres."
+        )
+
     previos = almacen.buscar_por_email(con, destino)
     return {
         "destino": destino,
@@ -45,6 +53,7 @@ def previsualizar(
         "cuerpo": cuerpo,
         "cv": ruta_cv.name,
         "etiqueta": plantillas.etiqueta(cfg, empresa),
+        "avisos": avisos,
         "duplicados": [
             {
                 "fecha": p["enviada_en"][:10],

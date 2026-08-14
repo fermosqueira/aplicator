@@ -72,6 +72,19 @@
     return true;
   }
 
+  function completarSiQuedoCortado(nodoTexto, email, indice) {
+    // LinkedIn parte el texto en varios nodos (por el "ver mas", por los resaltados). Si
+    // una direccion cae justo en ese corte, la regex ve solo la primera mitad y el pedazo
+    // puede seguir siendo valido: "...@gmail.co" en vez de "...@gmail.com". El mail sale,
+    // rebota, y la postulacion se da por hecha. Paso de verdad una vez.
+    if (indice + email.length < nodoTexto.nodeValue.length) return email; // no toca el borde
+
+    const completo = nodoTexto.parentElement?.textContent || "";
+    const candidatos = completo.match(MAIL) || [];
+    const entero = candidatos.find((c) => c.startsWith(email) && c.length > email.length);
+    return entero || email;
+  }
+
   function marcar(nodoTexto) {
     const texto = nodoTexto.nodeValue;
     if (!MAIL_TEST.test(texto)) return;
@@ -87,7 +100,7 @@
       }
       // Copia propia por vuelta: `m` se reasigna en cada iteracion y todos los chips
       // terminarian apuntando al ultimo mail encontrado.
-      const email = m[0];
+      const email = completarSiQuedoCortado(nodoTexto, m[0], m.index);
       const chip = document.createElement("span");
       chip.className = MARCA;
       chip.textContent = email;

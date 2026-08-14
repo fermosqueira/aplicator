@@ -87,25 +87,80 @@ def detectar_puesto(texto: str) -> str:
     return ""
 
 
+# Proveedores de correo gratuito. Se comparan por la primera etiqueta del dominio y no por
+# el dominio completo, asi 'gmail.com', 'gmail.com.ar' y el erroneo 'gmail.co' caen todos.
+PROVEEDORES = {
+    "gmail", "googlemail", "hotmail", "outlook", "yahoo", "live", "icloud", "proton",
+    "protonmail", "aol", "gmx", "zoho", "yandex", "msn", "me", "mail",
+}
+
+# Dominios de proveedores bien escritos. Sirven de referencia para detectar los que se
+# les parecen por una sola letra: 'gmail.co' en vez de 'gmail.com'.
+DOMINIOS_CONOCIDOS = (
+    "gmail.com", "googlemail.com", "hotmail.com", "outlook.com", "yahoo.com",
+    "live.com", "icloud.com", "protonmail.com", "proton.me", "aol.com",
+)
+
+
 def detectar_empresa(email: str) -> str:
     """Deriva un nombre de empresa del dominio del mail. 'rrhh@acme-corp.com' -> 'Acme Corp'."""
     if "@" not in (email or ""):
         return ""
     dominio = email.split("@", 1)[1].lower()
 
-    # Los dominios de correo genericos no dicen nada sobre la empresa.
-    genericos = {
-        "gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "live.com",
-        "icloud.com", "proton.me", "protonmail.com", "yahoo.com.ar",
-    }
-    if dominio in genericos:
+    # Un correo gratuito no dice nada sobre la empresa: mejor vacio que un "Gmail" de etiqueta.
+    partes = [p for p in dominio.split(".") if p != "www"]
+    if not partes or partes[0] in PROVEEDORES:
         return ""
 
-    # Nos quedamos con la etiqueta principal, descartando www y los sufijos de pais.
-    partes = [p for p in dominio.split(".") if p not in {"www", "com", "ar", "net", "org", "io", "co"}]
-    if not partes:
+    utiles = [p for p in partes if p not in {"com", "ar", "net", "org", "io", "co"}]
+    if not utiles:
         return ""
-    return partes[0].replace("-", " ").replace("_", " ").title()
+    return utiles[0].replace("-", " ").replace("_", " ").title()
+
+
+def _casi_igual(a: str, b: str) -> bool:
+    """True si se pasa de a a b con un solo error de tipeo.
+
+    Cuenta como un error agregar, sacar o cambiar un caracter, y tambien intercambiar dos
+    contiguos: 'gmial' por 'gmail' es el typo mas comun de todos y en distancia de edicion
+    clasica figura como dos operaciones, asi que hay que contemplarlo aparte.
+    """
+    if a == b:
+        return False
+    if abs(len(a) - len(b)) > 1:
+        return False
+
+    if len(a) == len(b):
+        distintos = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
+        if len(distintos) == 1:
+            return True
+        # Transposicion: dos posiciones contiguas, cruzadas entre si.
+        if len(distintos) == 2:
+            i, j = distintos
+            return j == i + 1 and a[i] == b[j] and a[j] == b[i]
+        return False
+
+    corta, larga = (a, b) if len(a) < len(b) else (b, a)
+    return any(larga[:i] + larga[i + 1:] == corta for i in range(len(larga)))
+
+
+def dominio_sospechoso(email: str) -> str:
+    """Si el dominio se parece por una letra a un proveedor conocido, devuelve el correcto.
+
+    Nace de un caso real: un mail salio a '@gmail.co' y reboto con Null MX. La postulacion
+    se dio por enviada y nunca la leyo nadie. Un error de una letra en una direccion es
+    invisible al revisar el borrador, pero cuesta una oportunidad entera.
+    """
+    if "@" not in (email or ""):
+        return ""
+    dominio = email.split("@", 1)[1].lower().strip()
+    if dominio in DOMINIOS_CONOCIDOS:
+        return ""
+    for conocido in DOMINIOS_CONOCIDOS:
+        if _casi_igual(dominio, conocido):
+            return conocido
+    return ""
 
 
 def url_portfolio(cfg: dict, idioma: str) -> str:

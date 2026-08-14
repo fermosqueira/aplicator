@@ -175,6 +175,15 @@ class Rutas(ServidorLevantado):
         self.assertIn("Hi Ana!", cuerpo["cuerpo"])
         self.assertNotIn("{", cuerpo["cuerpo"])
 
+    def test_avisa_cuando_el_dominio_parece_mal_escrito(self):
+        _, cuerpo = self.pedir("/previsualizar", {"email": "alguien@gmail.co"})
+        self.assertEqual(len(cuerpo["avisos"]), 1)
+        self.assertIn("gmail.com", cuerpo["avisos"][0])
+
+    def test_no_avisa_sobre_direcciones_legitimas(self):
+        _, cuerpo = self.pedir("/previsualizar", {"email": "renuka.m@spiceorb.com"})
+        self.assertEqual(cuerpo["avisos"], [])
+
     def test_idioma_invalido_cae_a_espanol(self):
         _, cuerpo = self.pedir("/previsualizar", {"email": "a@x.com", "idioma": "klingon"})
         self.assertIn("Postulación", cuerpo["asunto"])

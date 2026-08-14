@@ -80,7 +80,9 @@
     if (indice + email.length < nodoTexto.nodeValue.length) return email; // no toca el borde
 
     const completo = nodoTexto.parentElement?.textContent || "";
-    const candidatos = completo.match(MAIL) || [];
+    // Instancia propia, otra vez: .match() con una regex global le resetea el lastIndex, y
+    // esta funcion se llama desde adentro del bucle de marcar().
+    const candidatos = completo.match(new RegExp(MAIL.source, "g")) || [];
     const entero = candidatos.find((c) => c.startsWith(email) && c.length > email.length);
     return entero || email;
   }
@@ -89,12 +91,16 @@
     const texto = nodoTexto.nodeValue;
     if (!MAIL_TEST.test(texto)) return;
 
-    MAIL.lastIndex = 0;
+    // Instancia propia por llamada. Una regex global lleva `lastIndex` mutable adentro, y
+    // basta con que alguien mas la use (un .match(), un .test()) para reiniciar este bucle
+    // desde cero y colgar la pestaña. Que nadie mas pueda tocar este estado es la unica
+    // forma de que no vuelva a pasar.
+    const buscador = new RegExp(MAIL.source, "g");
     const fragmento = document.createDocumentFragment();
     let cursor = 0;
     let m;
 
-    while ((m = MAIL.exec(texto)) !== null) {
+    while ((m = buscador.exec(texto)) !== null) {
       if (m.index > cursor) {
         fragmento.appendChild(document.createTextNode(texto.slice(cursor, m.index)));
       }
@@ -112,6 +118,10 @@
       });
       fragmento.appendChild(chip);
       cursor = m.index + email.length;
+
+      // Si el email se completo, quedo mas largo que lo que matcheo la regex: hay que
+      // reposicionar la busqueda para no volver a leer el pedazo que ya consumimos.
+      if (cursor > buscador.lastIndex) buscador.lastIndex = cursor;
     }
 
     if (cursor < texto.length) {

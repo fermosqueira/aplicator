@@ -211,8 +211,10 @@ def main() -> int:
     cfg = plantillas.cargar_config(exigir_clave=False)
     servidor = crear_servidor(cfg)
     puerto = servidor.server_address[1]
+    # Sin acentos ni simbolos: el log se lee con herramientas que asumen ANSI y los
+    # destrozan. Un log no necesita adornos.
     print(f"[{ARRANQUE}] Aplicador escuchando en http://127.0.0.1:{puerto}"
-          f"  ·  historial: http://127.0.0.1:{puerto}/historial")
+          f" - historial: http://127.0.0.1:{puerto}/historial")
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:

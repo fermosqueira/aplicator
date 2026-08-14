@@ -1,0 +1,2 @@
+[14/08 09:02] Aplicador escuchando en http://127.0.0.1:8765  ·  historial: http://127.0.0.1:8765/historial
+  GET /ping -> 200

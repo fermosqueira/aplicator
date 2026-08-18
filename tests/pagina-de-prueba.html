@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Simulacro de feed</title>
+<!--
+  Banco de pruebas de la extension, sin Chrome y sin LinkedIn.
+
+  Existe porque los dos bugs mas serios que tuvo este proyecto vivieron en JavaScript —el
+  cuelgue del feed y el doble envio— y los dos pasaron el CI, donde solo corre `node --check`.
+  Eso valida sintaxis: un bucle infinito o un `.onclick` que no pisa un `addEventListener` la
+  pasan sin despeinarse.
+
+  Para usarlo:
+      cd tests && python -m http.server 8799
+      abrir http://127.0.0.1:8799/pagina-de-prueba.html
+
+  `window.__pedidos` guarda cada pedido que la extension le habria hecho al servidor, asi que
+  desde la consola se puede afirmar cosas como:
+      __pedidos.filter(p => p.ruta === "/enviar").length === 1
+  que es exactamente la regresion del doble envio.
+
+  Palancas: `__fallarEnvio` para probar el camino del error, `__demora` para simular
+  un servidor lento.
+-->
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f4f2ee; margin: 0; padding: 20px 0; }
+  .grilla { display: grid; grid-template-columns: 225px 555px 300px; gap: 24px; justify-content: center; }
+  .feed-shared-update-v2 { background: #fff; border: 1px solid #e0dfdc; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .update-components-actor__title { font-weight: 600; font-size: 14px; }
+  .sub { font-size: 12px; color: #666; }
+  .update-components-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; margin-top: 10px; }
+  .lateral, .columna-izq { background: #fff; border: 1px solid #e0dfdc; border-radius: 8px; padding: 16px; font-size: 13px; color: #666; height: 200px; }
+  a { color: #0a66c2; }
+</style>
+
+<div class="grilla">
+  <div class="columna-izq">Columna izquierda</div>
+
+  <main>
+    <!-- EL CASO QUE COLGABA LA PESTAÑA: el nodo de texto termina justo con la direccion,
+         y el resto ("m indicando…") vive en otro nodo. La regex ve "@gmail.co" pegado al
+         borde y dispara la guarda de completado. -->
+    <div class="feed-shared-update-v2" data-urn="urn:li:activity:111">
+      <div class="update-components-actor__title">Stacko Tech Solutions</div>
+      <div class="sub">Talent · 1 h</div>
+      <div class="update-components-text">Vacante QA Automation. Enviar CV a stackotechsolutions.career@gmail.co<span>m</span> indicando remuneracion pretendida.</div>
+    </div>
+
+    <!-- Dos direcciones, la segunda al final del nodo -->
+    <div class="feed-shared-update-v2" data-urn="urn:li:activity:222">
+      <div class="update-components-actor__title">Globex International</div>
+      <div class="sub">5 h</div>
+      <div class="update-components-text">Hiring a Manual Tester. Write to jobs@globex.io or maria.lopez@globex.io</div>
+    </div>
+
+    <!-- mailto, que ya andaba: no debe romperse -->
+    <div class="feed-shared-update-v2" data-urn="urn:li:activity:333">
+      <div class="update-components-actor__title">TalentoRH Consultora</div>
+      <div class="sub">2 h</div>
+      <div class="update-components-text">Cliente Mercado Pago busca QA. CV a <a href="mailto:busquedas@talentorh.com.ar">busquedas@talentorh.com.ar</a></div>
+    </div>
+  </main>
+
+  <div class="lateral">Panel lateral derecho</div>
+</div>
+
+<script>
+window.__pedidos = [];
+window.__fallarEnvio = false;
+window.__demora = 20;
+window.chrome = {
+  runtime: {
+    lastError: null,
+    sendMessage(mensaje, responder) {
+      window.__pedidos.push(JSON.parse(JSON.stringify(mensaje)));
+      const respuestas = {
+        "/sugerir": { ok: true, idioma: "es", puesto: "QA Automation", empresa: "", duplicados: [] },
+        "/previsualizar": { ok: true, asunto: "Prueba", cuerpo: "Hola!", cv: "cv.pdf", etiqueta: "Postulaciones/X", avisos: [] },
+        "/enviar": window.__fallarEnvio
+          ? { ok: false, error: "Ya le mandaste esta misma postulación hace menos de 2 minutos." }
+          : { ok: true, destino: mensaje.datos.email, etiqueta: "Postulaciones/X" },
+      };
+      setTimeout(() => responder(respuestas[mensaje.ruta]), window.__demora ?? 20);
+    },
+  },
+};
+window.__arranque = performance.now();
+</script>
+<script src="../extension/aviso.js"></script>
+<script src="../extension/modal.js"></script>
+<script src="../extension/contenido.js"></script>
+<script>window.__listo = performance.now() - window.__arranque;</script>

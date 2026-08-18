@@ -279,7 +279,30 @@ class Manejador(BaseHTTPRequestHandler):
         # El envio si necesita credenciales: las releemos por si acabas de cargarlas.
         cfg = plantillas.cargar_config()
         with almacen.sesion(self.ruta_db) as con:
-            return nucleo.postular(cfg, con, **self._campos(datos, con_post=True))
+            # Contestamos apenas el mail salio y quedo registrado. Etiquetarlo son entre 5 y
+            # 20 segundos mas de IMAP, y para entonces el drawer ya se cerro esperando esta
+            # respuesta: no puede quedarse trabado en la parte que es pura contabilidad.
+            resultado = nucleo.postular(
+                cfg, con, etiquetar_ahora=False, **self._campos(datos, con_post=True)
+            )
+
+        threading.Thread(
+            target=self._etiquetar_en_fondo,
+            args=(cfg, resultado["id"], resultado["marca"],
+                  resultado["destino"], resultado["etiqueta"]),
+            daemon=True,
+        ).start()
+        return resultado
+
+    def _etiquetar_en_fondo(self, cfg, id_fila, marca, destino, etiqueta) -> None:
+        """Conexion propia a la base: esto corre en otro hilo y sqlite3 no deja compartirlas."""
+        try:
+            with almacen.sesion(self.ruta_db) as con:
+                ok = nucleo.etiquetar_pendiente(cfg, con, id_fila, marca, destino, etiqueta)
+            _log(f"etiquetado #{id_fila} {destino} -> {etiqueta}" if ok
+                 else f"no se pudo etiquetar #{id_fila} {destino} (el mail salio igual)")
+        except Exception as e:
+            _log(f"etiquetado #{id_fila} fallido: {type(e).__name__}: {e}")
 
 
 def crear_servidor(cfg: dict, puerto: int | None = None, ruta_db=None) -> ThreadingHTTPServer:

@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 import unicodedata
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
@@ -153,6 +153,24 @@ def marcar_rebotada(con: sqlite3.Connection, id_fila: int, cuando: str = "") -> 
         (cuando or datetime.now().isoformat(timespec="seconds"), id_fila),
     )
     con.commit()
+
+
+def enviada_hace_poco(
+    con: sqlite3.Connection, email: str, asunto: str, segundos: int
+) -> bool:
+    """True si ya salio una postulacion identica hace menos de `segundos`.
+
+    Compara destinatario Y asunto, no solo destinatario: el asunto lleva el puesto, asi que
+    mandarle otra busqueda distinta a la misma empresa sigue siendo posible sin esperar. Lo
+    que esto frena es el mismo mail dos veces, que del otro lado se lee como spam.
+    """
+    limite = (datetime.now() - timedelta(seconds=segundos)).isoformat(timespec="seconds")
+    fila = con.execute(
+        "SELECT 1 FROM postulaciones WHERE email = ? AND asunto = ? AND enviada_en >= ? "
+        "LIMIT 1",
+        (email.strip().lower(), asunto, limite),
+    ).fetchone()
+    return fila is not None
 
 
 def marcar_descartada(

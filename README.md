@@ -138,6 +138,18 @@ El botón pide **dos clicks a propósito**: el primero muestra el mail exacto qu
 segundo lo manda. Editar cualquier campo invalida el borrador y obliga a mirarlo de nuevo. Un
 mail mal dirigido a un recruiter no se puede deshacer.
 
+Con el segundo click **el panel se cierra al instante** y el resultado llega en un aviso abajo
+a la izquierda: verde si salió, rojo si falló. El verde se va solo; el rojo se queda hasta que
+lo cerrés, porque un error que desaparece antes de que lo leas es un error que no pasó. El chip
+del mail queda marcado con un ✓ en la página, así se ve de un vistazo a quién ya le escribiste.
+Si el envío falla, lo que habías tipeado se recupera al reabrir el mismo chip.
+
+**No se puede mandar dos veces la misma postulación.** Hay dos cerrojos: el botón queda inerte
+apenas se dispara el envío, y el servidor rechaza un mail al mismo destinatario con el mismo
+asunto dentro de los 2 minutos. El segundo existe porque el primero ya falló una vez —ver abajo—
+y dos mails idénticos seguidos se leen como spam del otro lado. Postularse a otra búsqueda de la
+misma empresa sigue siendo inmediato: el asunto lleva el puesto.
+
 ### Desde la consola
 
 ```bash
@@ -157,7 +169,7 @@ python enviar_cli.py --respuestas
 cd tests && python -m unittest discover -v
 ```
 
-79 tests, sin dependencias ni servicios externos. Los fixtures arman su propia carpeta con
+120 tests, sin dependencias ni servicios externos. Los fixtures arman su propia carpeta con
 plantillas y PDF de mentira, así que corren igual en cualquier máquina y en CI, donde no
 existen ni `config.json` ni los CV.
 
@@ -179,6 +191,25 @@ rechacen a quien no corresponde.
 
 El CI corre además `node --check` sobre el JavaScript de la extensión y falla si alguna vez se
 versiona `config.json`, un `.pdf` o la base de datos.
+
+### El punto ciego
+
+`node --check` valida sintaxis y nada más. Los dos bugs más serios que tuvo este proyecto
+vivieron en el JavaScript de la extensión y los dos pasaron el CI sin despeinarse: un bucle
+infinito que colgaba la pestaña de LinkedIn, y un `principal.onclick = cerrar` que **no** pisaba
+al `addEventListener` de más arriba —son dos registros distintos y disparan los dos— así que el
+botón "Listo" reenviaba el mismo mail.
+
+Por eso está `tests/pagina-de-prueba.html`: simula el feed, reemplaza `chrome.runtime` por un
+doble y anota en `window.__pedidos` cada pedido que la extensión habría hecho. Se levanta con
+`cd tests && python -m http.server 8799` y desde la consola del navegador se afirma sobre eso:
+
+```javascript
+__pedidos.filter(p => p.ruta === "/enviar").length === 1
+```
+
+que es exactamente la regresión del doble envío. Todavía se corre a mano; automatizarlo con un
+DOM mínimo es el próximo paso pendiente.
 
 ## Estructura
 

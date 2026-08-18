@@ -15,6 +15,13 @@ import correo
 import plantillas
 
 
+# Ventana del anti-duplicado. Dos mails identicos seguidos al mismo recruiter se leen como
+# spam del otro lado. La extension ya no puede mandarlos dos veces, pero esta guarda no
+# depende de que el navegador se porte bien: paso una vez y costo dos mails a la misma
+# direccion con 75 segundos de diferencia.
+SEGUNDOS_ANTIDUPLICADO = 120
+
+
 def sugerir(cfg: dict, email: str, texto_post: str = "") -> dict:
     """Adivina idioma, puesto y empresa a partir del post y del mail. Todo es editable
     despues: son sugerencias para ahorrar tipeo, no verdades."""
@@ -76,13 +83,29 @@ def postular(
     texto_post: str = "",
     url_post: str = "",
     autor_post: str = "",
+    etiquetar_ahora: bool = True,
 ) -> dict:
-    """Envia, registra y etiqueta. Devuelve el detalle de lo que efectivamente paso."""
+    """Envia, registra y (si se pide) etiqueta. Devuelve el detalle de lo que paso.
+
+    Con etiquetar_ahora=False vuelve apenas el mail salio y quedo registrado, sin tocar IMAP.
+    Etiquetar abre una segunda conexion y reintenta buscar la copia en Enviados con esperas
+    crecientes: son entre 5 y 20 segundos de contabilidad, despues de que el mail ya se fue.
+    El servidor la deja para un hilo de fondo y contesta antes; la CLI la hace en el momento
+    porque su salida informa si la etiqueta se aplico.
+    """
     destino = (destino or "").strip()
     if "@" not in destino:
         raise ValueError(f"'{destino}' no parece una direccion de mail")
 
     vista = previsualizar(cfg, con, destino, recruiter, empresa, puesto, idioma)
+
+    # Antes de mandar nada: si es el mismo mail al mismo destinatario hace un rato, no sale.
+    if almacen.enviada_hace_poco(con, destino, vista["asunto"], SEGUNDOS_ANTIDUPLICADO):
+        raise ValueError(
+            f"Ya le mandaste esta misma postulación a {destino} hace menos de "
+            f"{SEGUNDOS_ANTIDUPLICADO // 60} minutos. No se envió de nuevo."
+        )
+
     marca = correo.nueva_marca()
 
     mensaje = correo.armar_mensaje(
@@ -113,24 +136,46 @@ def postular(
         autor_post=autor_post,
     )
 
-    try:
-        etiquetada, hilo = correo.etiquetar(cfg, marca, destino, vista["etiqueta"])
-    except Exception:
-        etiquetada, hilo = False, ""
-    almacen.marcar_etiquetada(con, id_fila, etiquetada)
-    if hilo:
-        almacen.guardar_hilo(con, id_fila, hilo)
-
-    return {
+    respuesta = {
         "ok": True,
         "id": id_fila,
         "destino": destino,
         "asunto": vista["asunto"],
         "cv": vista["cv"],
         "etiqueta": vista["etiqueta"],
-        "etiquetada": etiquetada,
+        "marca": marca,
         "duplicados": vista["duplicados"],
     }
+
+    if etiquetar_ahora:
+        respuesta["etiquetada"] = etiquetar_pendiente(
+            cfg, con, id_fila, marca, destino, vista["etiqueta"]
+        )
+    return respuesta
+
+
+def etiquetar_pendiente(
+    cfg: dict,
+    con: sqlite3.Connection,
+    id_fila: int,
+    marca: str,
+    destino: str,
+    etiqueta: str,
+) -> bool:
+    """Le pone la etiqueta al mensaje enviado y guarda el id de hilo.
+
+    Es lo lento del envio y lo que menos urge: el mail ya salio. Si falla, la postulacion
+    igual quedo registrada, y el detector de respuestas sabe caer a buscar por remitente
+    cuando no hay hilo guardado.
+    """
+    try:
+        etiquetada, hilo = correo.etiquetar(cfg, marca, destino, etiqueta)
+    except Exception:
+        etiquetada, hilo = False, ""
+    almacen.marcar_etiquetada(con, id_fila, etiquetada)
+    if hilo:
+        almacen.guardar_hilo(con, id_fila, hilo)
+    return etiquetada
 
 
 def detectar_respuestas(cfg: dict, con: sqlite3.Connection, buzon=None) -> dict:

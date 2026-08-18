@@ -3,17 +3,25 @@
   "name": "Aplicador",
   "version": "1.0",
   "description": "Convierte los mails de las ofertas de LinkedIn en un boton para postularse.",
-
-  "host_permissions": ["http://127.0.0.1:8765/*"],
-
-  "action": { "default_title": "Aplicador — ver historial de postulaciones" },
-
-  "background": { "service_worker": "fondo.js" },
-
+  "host_permissions": [
+    "http://127.0.0.1:8765/*"
+  ],
+  "action": {
+    "default_title": "Aplicador — ver historial de postulaciones"
+  },
+  "background": {
+    "service_worker": "fondo.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://*.linkedin.com/*"],
-      "js": ["modal.js", "contenido.js"],
+      "matches": [
+        "https://*.linkedin.com/*"
+      ],
+      "js": [
+        "aviso.js",
+        "modal.js",
+        "contenido.js"
+      ],
       "run_at": "document_idle"
     }
   ]

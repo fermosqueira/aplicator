@@ -58,6 +58,14 @@
         color: #fff !important;
         border-bottom-style: solid !important;
       }
+      /* Ya postulado. Con el drawer cerrandose solo al enviar, esta es la unica marca
+         durable en la pagina de que a esta direccion ya le escribiste. */
+      .${MARCA}--enviado {
+        background: #e9f5ec !important;
+        color: #14522a !important;
+        border-bottom-color: #1d5c30 !important;
+      }
+      .${MARCA}--enviado::after { content: " ✓"; font-weight: 700; }
     `;
     document.documentElement.appendChild(style);
   }

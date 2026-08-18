@@ -132,6 +132,11 @@
     });
   }
 
+  // Lo tipeado, por direccion, mientras dure la pestaña. Como el drawer se cierra apenas se
+  // clickea enviar, un envio fallido dejaria al usuario sin el formulario; con esto reabrir
+  // el chip lo devuelve tal como estaba. Se borra al enviar bien: ya no hace falta.
+  const recordado = new Map();
+
   function abrir({ email, texto, autor, url, chip }) {
     cerrarAbierto();
 
@@ -192,17 +197,16 @@
 
     let idioma = "es";
     let confirmado = false; // en el segundo click ya vio el borrador
-    let enviando = false;
+    let terminado = false;  // ya se disparo el envio: no hay vuelta atras
 
     const cerrar = () => {
-      if (enviando) return;
       chip?.classList.remove("aplicador-chip--activo");
       anfitrion.remove();
       document.removeEventListener("keydown", alTeclear, true);
     };
 
     const alTeclear = (e) => {
-      if (e.key === "Escape" && !enviando) {
+      if (e.key === "Escape") {
         e.stopPropagation();
         cerrar();
       }
@@ -259,7 +263,7 @@
     raiz.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Escape") cerrar();
-      if (e.key === "Enter" && e.target.tagName === "INPUT" && !principal.disabled) {
+      if (e.key === "Enter" && e.target.tagName === "INPUT" && !principal.disabled && !terminado) {
         principal.click();
       }
     });
@@ -267,6 +271,8 @@
     document.addEventListener("keydown", alTeclear, true);
 
     principal.addEventListener("click", async () => {
+      if (terminado) return; // el envio ya salio; el boton no vuelve a hacer nada
+
       if (!confirmado) {
         principal.disabled = true;
         principal.textContent = "Armando…";
@@ -297,29 +303,44 @@
         return;
       }
 
-      enviando = true;
-      principal.disabled = true;
-      principal.textContent = "Enviando…";
+      // A partir de aca el boton es inerte para siempre. La bandera se chequea arriba de
+      // todo el handler, asi que tapa el click, el Enter y cualquier camino que se agregue
+      // despues. Antes esto se intentaba con `principal.onclick = cerrar`, que NO pisa un
+      // addEventListener —son dos registros distintos y disparan los dos— y el resultado
+      // era que el segundo click reenviaba el mismo mail.
+      terminado = true;
 
-      const resultado = await pedir("/enviar", datosActuales());
-      enviando = false;
+      const datos = datosActuales();
+      const aviso = window.AplicadorAviso.mostrar(
+        "enviando", `Enviando a <b>${escapar(datos.email)}</b>…`
+      );
+
+      // Se cierra ya. El pedido es una clausura y sigue vivo aunque el drawer no este en el
+      // DOM: la respuesta llega igual y termina de pintar el aviso.
+      const pedido = pedir("/enviar", datos);
+      recordado.delete(email);
+      cerrar();
+
+      const resultado = await pedido;
 
       if (!resultado.ok) {
-        principal.disabled = false;
-        principal.textContent = "Enviar ahora";
-        avisar("error", TEXTO[resultado.error] || escapar(resultado.error));
+        // Se guarda lo tipeado para que reabrir el chip no obligue a rehacerlo.
+        recordado.set(email, { ...datos, idioma });
+        aviso.actualizar(
+          "error",
+          `No se pudo enviar a <b>${escapar(datos.email)}</b>.<br>` +
+            (TEXTO[resultado.error] || escapar(resultado.error))
+        );
         return;
       }
 
-      mensajes.innerHTML = "";
-      const etiqueta = resultado.etiquetada
-        ? `Etiquetado como <code>${escapar(resultado.etiqueta)}</code>.`
-        : "El mail salio, pero no se pudo aplicar la etiqueta. Quedo registrado igual.";
-      avisar("ok", `Enviado a <b>${escapar(resultado.destino)}</b>. ${etiqueta}`);
-      principal.textContent = "Listo";
-      principal.disabled = false;
-      principal.onclick = cerrar;
-      setTimeout(cerrar, 4000);
+      chip?.classList.add("aplicador-chip--enviado");
+      chip?.setAttribute("title", "Ya te postulaste con esta dirección");
+      aviso.actualizar(
+        "ok",
+        `Enviado a <b>${escapar(resultado.destino)}</b>` +
+          (resultado.etiqueta ? ` · <code>${escapar(resultado.etiqueta)}</code>` : "")
+      );
     });
 
     // El autor del post como alternativa para Empresa: cuando el mail es de una consultora
@@ -359,6 +380,17 @@
         }
       } else {
         avisar("error", TEXTO[s.error] || escapar(s.error));
+      }
+
+      // Lo que el usuario habia tipeado gana sobre lo que sugiere el servidor.
+      const previo = recordado.get(email);
+      if (previo) {
+        campos.empresa.value = previo.empresa || campos.empresa.value;
+        campos.puesto.value = previo.puesto || campos.puesto.value;
+        campos.recruiter.value = previo.recruiter || "";
+        if (previo.idioma && previo.idioma !== idioma) {
+          raiz.querySelector(`.idiomas button[data-idioma="${previo.idioma}"]`)?.click();
+        }
       }
 
       mostrarAutor();

@@ -1,6 +1,6 @@
 Hi {recruiter}! My name is Fernando and I am a QA Analyst.
 
-I saw that you are growing the team at {empresa}. My background is in QA and it may not match this particular opening, but I would like to share my resume so you can keep me in mind for any QA role that comes up, now or further down the line.
+I saw that you are growing the team at {empresa} and I would like to share my resume so you can keep me in mind for any QA opening.
 
 I am deeply passionate about technology and software quality, focusing my career on analyzing, designing, and enhancing processes to guarantee robust products. With an organized and detail-oriented mindset, I look forward to bringing value to your teams through structured methodologies and an end-to-end view of QA. My objective is to optimize both the final product and the technical procedures behind it.
 

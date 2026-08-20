@@ -1,6 +1,6 @@
 Hola {recruiter}! Mi nombre es Fernando y soy QA Analyst.
 
-Vi que están sumando gente al equipo en {empresa}. Mi perfil es de QA y quizás no coincida con esta búsqueda en particular, pero me gustaría acercarles mi CV para que me tengan en cuenta ante cualquier apertura de QA, ahora o más adelante.
+Vi que están sumando gente al equipo en {empresa} y me gustaría acercarles mi CV para que me tengan en cuenta ante cualquier apertura en la posición de QA.
 
 Soy un profesional apasionado por la tecnología y la calidad del software, enfocado en el análisis, creación y mejora de procesos para garantizar la solidez de los productos. Con una forma de trabajo ordenada y orientada al detalle, busco aportar valor a los equipos a través de metodologías bien estructuradas y una visión integral del aseguramiento de la calidad. Mi objetivo es optimizar no solo el software final, sino también los procedimientos técnicos que lo hacen posible.
 

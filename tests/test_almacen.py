@@ -153,6 +153,26 @@ class EstadoDeLaPostulacion(unittest.TestCase):
         self.assertEqual(fila["descartada"], 1)
 
 
+class BusquedaPorTipo(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.con = almacen.conectar(Path(self.tmp.name) / "tipos.db")
+        self.addCleanup(self.con.close)
+        almacen.guardar(self.con, email="a@acme.com", empresa="Acme")
+        almacen.guardar(self.con, email="b@globex.com", empresa="Globex", tipo="espontanea")
+
+    def test_se_pueden_filtrar_las_espontaneas(self):
+        filas = almacen.buscar(self.con, "espontanea")
+        self.assertEqual([f["empresa"] for f in filas], ["Globex"])
+
+    def test_el_tipo_queda_guardado(self):
+        self.assertEqual(almacen.buscar_por_email(self.con, "a@acme.com")[0]["tipo"], "directa")
+        self.assertEqual(
+            almacen.buscar_por_email(self.con, "b@globex.com")[0]["tipo"], "espontanea"
+        )
+
+
 class Sesion(unittest.TestCase):
     def test_la_sesion_cierra_la_conexion(self):
         # `with sqlite3.connect(...)` NO cierra: maneja la transaccion. Por eso existe

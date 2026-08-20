@@ -35,6 +35,33 @@ PUESTOS = [
 ]
 
 
+# Los dos cuerpos de mail. "directa" es postularse a la busqueda publicada; "espontanea" es
+# acercar el CV a una empresa cuya busqueda no es de QA, para quedar en su base de datos. El
+# tipo es un eje aparte del idioma: el CV adjunto es el mismo de QA en los dos casos.
+TIPOS = ("directa", "espontanea")
+
+
+def normalizar(cfg: dict) -> dict:
+    """Lleva la config a la forma con `plantillas` por tipo, venga como venga.
+
+    Las versiones anteriores tenian `plantilla` y `asunto` sueltos en cada idioma. Se
+    convierten en el tipo "directa", que es lo que efectivamente eran, asi nadie tiene que
+    reescribir su config.json para seguir usando lo de siempre.
+
+    Vive aparte de cargar_config porque los tests arman su config a mano sin pasar por ahi:
+    los dos caminos tienen que normalizar igual, o estarian probando formas distintas.
+    """
+    for ajustes in cfg.get("idiomas", {}).values():
+        if "plantillas" not in ajustes and "plantilla" in ajustes:
+            ajustes["plantillas"] = {
+                "directa": {
+                    "archivo": ajustes["plantilla"],
+                    "asunto": ajustes.get("asunto", ""),
+                }
+            }
+    return cfg
+
+
 def cargar_config(ruta: Path | None = None, exigir_clave: bool = True) -> dict:
     """Lee config.json y valida que este completo antes de que algo falle mas adelante.
 
@@ -57,7 +84,7 @@ def cargar_config(ruta: Path | None = None, exigir_clave: bool = True) -> dict:
             "El app_password de config.json todavia esta sin completar.\n"
             "Generá uno en https://myaccount.google.com/apppasswords y pegalo ahi."
         )
-    return cfg
+    return normalizar(cfg)
 
 
 def carpeta(cfg: dict) -> Path:
@@ -188,17 +215,42 @@ def _prolijo(texto: str) -> str:
     return re.sub(r"[ \t]+\n", "\n", texto)
 
 
-def armar(cfg: dict, idioma: str, recruiter: str, empresa: str, puesto: str) -> tuple[str, str]:
-    """Devuelve (asunto, cuerpo) ya rellenados y listos para enviar."""
+def elegir_plantilla(cfg: dict, idioma: str, tipo: str) -> dict:
+    """El {archivo, asunto} de esa combinacion de idioma y tipo, o un error que dice como
+    arreglarlo. ValueError y no KeyError: el servidor lo convierte en un 400 con el texto
+    adentro, asi que el mensaje termina en la pantalla del usuario."""
     if idioma not in cfg["idiomas"]:
         raise ValueError(f"Idioma '{idioma}' desconocido. Usá 'es' o 'en'.")
+
+    disponibles = cfg["idiomas"][idioma].get("plantillas") or {}
+    if tipo not in disponibles:
+        tiene = ", ".join(sorted(disponibles)) or "ninguna"
+        raise ValueError(
+            f"No hay plantilla '{tipo}' para el idioma '{idioma}' (hay: {tiene}). "
+            f"Agregala en config.json bajo idiomas.{idioma}.plantillas, con 'archivo' y 'asunto'."
+        )
+    return disponibles[tipo]
+
+
+def armar(
+    cfg: dict,
+    idioma: str,
+    recruiter: str,
+    empresa: str,
+    puesto: str,
+    tipo: str = "directa",
+) -> tuple[str, str]:
+    """Devuelve (asunto, cuerpo) ya rellenados y listos para enviar."""
+    eleccion = elegir_plantilla(cfg, idioma, tipo)
     ajustes = cfg["idiomas"][idioma]
 
     puesto = (puesto or "").strip() or ajustes["sin_puesto"]
     empresa = (empresa or "").strip() or ajustes["sin_empresa"]
     recruiter = (recruiter or "").strip()
 
-    plantilla = (carpeta(cfg) / ajustes["plantilla"]).read_text(encoding="utf-8")
+    plantilla = (carpeta(cfg) / eleccion["archivo"]).read_text(encoding="utf-8")
+    # Se pasan siempre los cuatro huecos aunque la plantilla no los use: el cuerpo espontaneo
+    # no nombra el puesto, y format() ignora sin quejarse lo que le sobra.
     cuerpo = plantilla.format(
         recruiter=recruiter,
         puesto=puesto,
@@ -207,7 +259,7 @@ def armar(cfg: dict, idioma: str, recruiter: str, empresa: str, puesto: str) -> 
     )
     cuerpo = _prolijo(cuerpo).rstrip() + "\n\n" + firma(cfg, idioma)
 
-    asunto = ajustes["asunto"].format(puesto=puesto, remitente=cfg["remitente"]["nombre"])
+    asunto = eleccion["asunto"].format(puesto=puesto, remitente=cfg["remitente"]["nombre"])
     return asunto, cuerpo
 
 

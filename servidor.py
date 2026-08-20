@@ -211,6 +211,8 @@ class Manejador(BaseHTTPRequestHandler):
             "empresa": (datos.get("empresa") or "").strip(),
             "puesto": (datos.get("puesto") or "").strip(),
             "idioma": datos.get("idioma") if datos.get("idioma") in ("es", "en") else "es",
+            # Lista blanca igual que el idioma: lo que llega de la pagina no elige archivos.
+            "tipo": datos.get("tipo") if datos.get("tipo") in plantillas.TIPOS else "directa",
         }
         if con_post:
             # Solo al enviar: previsualizar no necesita el post y no tiene donde guardarlo.

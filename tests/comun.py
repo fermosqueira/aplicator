@@ -17,6 +17,11 @@ if str(RAIZ) not in sys.path:
 PLANTILLA_ES = "Hola {recruiter}! Me postulo a {puesto} en {empresa}.\nPortfolio: {portfolio}\n"
 PLANTILLA_EN = "Hi {recruiter}! I apply for {puesto} at {empresa}.\nPortfolio: {portfolio}\n"
 
+# El segundo tipo de mail: no nombra el puesto, a proposito. Sirve para verificar que
+# armar() tolera una plantilla que no usa todos los huecos.
+ESPONTANEA_ES = "Hola {recruiter}! Les acerco mi CV para {empresa}.\nPortfolio: {portfolio}\n"
+ESPONTANEA_EN = "Hi {recruiter}! Sharing my CV with {empresa}.\nPortfolio: {portfolio}\n"
+
 # Un PDF valido minimo: alcanza para que el codigo lo lea y lo adjunte.
 PDF = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
 
@@ -25,6 +30,8 @@ def armar_config(carpeta: Path) -> dict:
     """Escribe las plantillas y los CV falsos, y devuelve una config que apunta ahi."""
     (carpeta / "es.txt").write_text(PLANTILLA_ES, encoding="utf-8")
     (carpeta / "en.txt").write_text(PLANTILLA_EN, encoding="utf-8")
+    (carpeta / "es-esp.txt").write_text(ESPONTANEA_ES, encoding="utf-8")
+    (carpeta / "en-esp.txt").write_text(ESPONTANEA_EN, encoding="utf-8")
     (carpeta / "cv-es.pdf").write_bytes(PDF)
     (carpeta / "cv-en.pdf").write_bytes(PDF)
 
@@ -43,14 +50,24 @@ def armar_config(carpeta: Path) -> dict:
         "etiqueta_padre": "Postulaciones",
         "idiomas": {
             "es": {
-                "cv": "cv-es.pdf", "plantilla": "es.txt",
-                "asunto": "Postulación {puesto} - {remitente}",
+                "cv": "cv-es.pdf",
                 "sin_puesto": "QA", "sin_empresa": "la empresa",
+                "plantillas": {
+                    "directa": {"archivo": "es.txt",
+                                "asunto": "Postulación {puesto} - {remitente}"},
+                    "espontanea": {"archivo": "es-esp.txt",
+                                   "asunto": "CV QA - {remitente}"},
+                },
             },
             "en": {
-                "cv": "cv-en.pdf", "plantilla": "en.txt",
-                "asunto": "Application for {puesto} - {remitente}",
+                "cv": "cv-en.pdf",
                 "sin_puesto": "QA", "sin_empresa": "your company",
+                "plantillas": {
+                    "directa": {"archivo": "en.txt",
+                                "asunto": "Application for {puesto} - {remitente}"},
+                    "espontanea": {"archivo": "en-esp.txt",
+                                   "asunto": "QA CV - {remitente}"},
+                },
             },
         },
         "servidor": {

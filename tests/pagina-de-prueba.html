@@ -67,13 +67,15 @@
 window.__pedidos = [];
 window.__fallarEnvio = false;
 window.__demora = 20;
+window.__tipoSugerido = "directa";
 window.chrome = {
   runtime: {
     lastError: null,
     sendMessage(mensaje, responder) {
       window.__pedidos.push(JSON.parse(JSON.stringify(mensaje)));
       const respuestas = {
-        "/sugerir": { ok: true, idioma: "es", puesto: "QA Automation", empresa: "", duplicados: [] },
+        "/sugerir": { ok: true, idioma: "es", puesto: "QA Automation", empresa: "",
+                       tipo: window.__tipoSugerido ?? "directa", duplicados: [] },
         "/previsualizar": { ok: true, asunto: "Prueba", cuerpo: "Hola!", cv: "cv.pdf", etiqueta: "Postulaciones/X", avisos: [] },
         "/enviar": window.__fallarEnvio
           ? { ok: false, error: "Ya le mandaste esta misma postulación hace menos de 2 minutos." }

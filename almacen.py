@@ -51,6 +51,9 @@ COLUMNAS_NUEVAS = {
     # postulacion dada por perdida por error es un error caro.
     "descartada": "INTEGER NOT NULL DEFAULT 0",
     "descartada_en": "TEXT NOT NULL DEFAULT ''",
+    # "directa" (me postulo a esta busqueda) o "espontanea" (les acerco el CV por si abren
+    # algo de QA). Las filas viejas quedan en directa, que es lo que efectivamente fueron.
+    "tipo": "TEXT NOT NULL DEFAULT 'directa'",
 }
 
 # Las descartadas van al fondo, no se borran. Arriba queda lo que sigue en juego, que es lo
@@ -62,7 +65,7 @@ ORDEN = "descartada ASC, enviada_en DESC"
 # Donde busca el buscador del panel. El texto del post es la razon de ser de todo esto:
 # permite encontrar una postulacion por una palabra que solo estaba en la publicacion.
 CAMPOS_BUSCABLES = (
-    "email", "empresa", "puesto", "recruiter", "autor_post", "asunto", "texto_post",
+    "email", "empresa", "puesto", "recruiter", "autor_post", "asunto", "texto_post", "tipo",
 )
 
 
@@ -106,7 +109,8 @@ def guardar(con: sqlite3.Connection, **datos) -> int:
     campos = {
         "enviada_en": datetime.now().isoformat(timespec="seconds"),
         "email": "", "recruiter": "", "empresa": "", "puesto": "",
-        "idioma": "es", "asunto": "", "marca": "", "etiqueta": "", "etiquetada": 0,
+        "idioma": "es", "tipo": "directa",
+        "asunto": "", "marca": "", "etiqueta": "", "etiquetada": 0,
         "texto_post": "", "url_post": "", "autor_post": "", "hilo": "",
     }
     campos.update(datos)

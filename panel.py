@@ -63,6 +63,11 @@ PAGINA = """<!doctype html>
     padding: 12px 14px; cursor: pointer; align-items: center; }
   .cabecera:hover { background: rgba(127,127,127,.06); }
   .fecha { font-size: 12px; color: var(--suave); }
+  /* Espontánea: el CV acercado sin postularse a la búsqueda publicada. Sin esta marca, en
+     dos meses no hay forma de distinguir una de otra en el historial. */
+  .espontanea { font-size: 10.5px; font-weight: 600; color: var(--suave);
+    border: 1px solid var(--borde); border-radius: 9px; padding: 1px 6px; margin-left: 6px;
+    white-space: nowrap; }
   .empresa { font-weight: 600; }
   .puesto { color: var(--suave); }
   .marca-si { color: var(--verde); background: var(--verde-fondo); border-radius: 10px;
@@ -164,7 +169,9 @@ function pintar(filas) {
     <div class="fila${f.descartada ? " descartada" : ""}" data-id="${f.id}">
       <div class="cabecera">
         <span class="fecha">${esc(f.enviada_en.slice(0, 10))}</span>
-        <span class="empresa">${esc(f.empresa || "—")}</span>
+        <span class="empresa">${esc(f.empresa || "—")}${
+          f.tipo === "espontanea" ? '<span class="espontanea">espontánea</span>' : ""
+        }</span>
         <span class="puesto">${esc(f.puesto || "—")}</span>
         <span class="${estado.clase}">${estado.texto}</span>
       </div>

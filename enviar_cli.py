@@ -103,7 +103,8 @@ def cmd_ver(args) -> int:
     cfg = plantillas.cargar_config(exigir_clave=False)
     con = almacen.conectar()
     vista = nucleo.previsualizar(
-        cfg, con, args.destino, args.recruiter, args.empresa, args.puesto, args.idioma
+        cfg, con, args.destino, args.recruiter, args.empresa, args.puesto, args.idioma,
+        args.tipo,
     )
 
     _rotulo("Asi saldria el mail")
@@ -111,6 +112,7 @@ def cmd_ver(args) -> int:
     print(f"  Asunto:   {vista['asunto']}")
     print(f"  Adjunto:  {vista['cv']}")
     print(f"  Etiqueta: {vista['etiqueta']}")
+    print(f"  Tipo:     {vista['tipo']}")
     print()
     print(vista["cuerpo"])
 
@@ -126,7 +128,8 @@ def cmd_enviar(args) -> int:
     con = almacen.conectar()
 
     vista = nucleo.previsualizar(
-        cfg, con, args.destino, args.recruiter, args.empresa, args.puesto, args.idioma
+        cfg, con, args.destino, args.recruiter, args.empresa, args.puesto, args.idioma,
+        args.tipo,
     )
     if vista["duplicados"] and not args.igual:
         _rotulo("Ya le escribiste a esta direccion")
@@ -136,7 +139,8 @@ def cmd_enviar(args) -> int:
         return 1
 
     resultado = nucleo.postular(
-        cfg, con, args.destino, args.recruiter, args.empresa, args.puesto, args.idioma
+        cfg, con, args.destino, args.recruiter, args.empresa, args.puesto, args.idioma,
+        args.tipo,
     )
 
     _rotulo("Enviado")
@@ -159,6 +163,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--puesto", default="", help="titulo del puesto")
     p.add_argument("--recruiter", default="", help="nombre de pila de quien recibe")
     p.add_argument("--idioma", default="es", choices=["es", "en"])
+    p.add_argument("--tipo", default="directa", choices=list(plantillas.TIPOS),
+                   help="directa: me postulo a esta busqueda. "
+                        "espontanea: les acerco el CV por si abren algo de QA")
     p.add_argument("--igual", action="store_true", help="enviar aunque sea repetido")
 
     p.add_argument("--ver", action="store_true", help="mostrar el mail sin enviarlo")

@@ -101,6 +101,13 @@ class MigracionDesdeElEsquemaViejo(unittest.TestCase):
         self.assertEqual(fila["hilo"], "")
         self.assertEqual(fila["respondida"], 0)
 
+    def test_las_filas_viejas_quedan_como_postulacion_directa(self):
+        # Todo lo enviado antes de que existiera el tipo fue una postulacion directa: ese
+        # es el default correcto, no una eleccion arbitraria.
+        con = almacen.conectar(self.ruta)
+        self.addCleanup(con.close)
+        self.assertEqual(almacen.buscar_por_email(con, "rrhh@acme.com")[0]["tipo"], "directa")
+
     def test_es_idempotente(self):
         # Conectarse mil veces no puede fallar ni duplicar columnas.
         for _ in range(3):

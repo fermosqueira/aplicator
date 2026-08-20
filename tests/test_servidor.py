@@ -215,6 +215,44 @@ class Rutas(ServidorLevantado):
         self.assertEqual(cuerpo["idioma"], "es")
         self.assertEqual(cuerpo["duplicados"], [])
 
+    def test_sugiere_espontanea_cuando_el_post_no_es_de_qa(self):
+        # El caso que motivo el tipo nuevo: una busqueda que no es de QA, a la que igual
+        # conviene acercarle el CV.
+        _, cuerpo = self.pedir("/sugerir", {
+            "email": "rrhh@acme.com",
+            "texto": "Buscamos Backend Developer con experiencia en Go para el equipo",
+        })
+        self.assertEqual(cuerpo["tipo"], "espontanea")
+        self.assertEqual(cuerpo["puesto"], "")
+
+    def test_sugiere_directa_cuando_el_post_si_es_de_qa(self):
+        _, cuerpo = self.pedir("/sugerir", {
+            "email": "rrhh@acme.com",
+            "texto": "Buscamos QA Automation con experiencia en pruebas para el equipo",
+        })
+        self.assertEqual(cuerpo["tipo"], "directa")
+
+    def test_previsualizar_respeta_el_tipo(self):
+        _, directa = self.pedir("/previsualizar", {
+            "email": "rrhh@acme.com", "empresa": "Acme", "puesto": "QA", "idioma": "es",
+        })
+        _, esp = self.pedir("/previsualizar", {
+            "email": "rrhh@acme.com", "empresa": "Acme", "puesto": "QA", "idioma": "es",
+            "tipo": "espontanea",
+        })
+
+        self.assertIn("Postulación", directa["asunto"])
+        self.assertEqual(esp["asunto"], "CV QA - Nombre Apellido")
+        self.assertEqual(esp["tipo"], "espontanea")
+        self.assertNotEqual(directa["cuerpo"], esp["cuerpo"])
+
+    def test_un_tipo_inventado_cae_a_directa(self):
+        # Lista blanca: lo que llega de la pagina no elige que archivo se lee del disco.
+        _, cuerpo = self.pedir("/previsualizar", {
+            "email": "a@x.com", "tipo": "../../etc/passwd",
+        })
+        self.assertEqual(cuerpo["tipo"], "directa")
+
     def test_previsualizar_arma_el_mail_sin_enviarlo(self):
         codigo, cuerpo = self.pedir("/previsualizar", {
             "email": "rrhh@acme.com", "empresa": "Acme",

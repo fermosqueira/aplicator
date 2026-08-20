@@ -134,6 +134,31 @@ El panel **no bloquea la página**: se puede seguir scrolleando el feed y leer e
 Además el texto de la publicación viaja dentro del panel, que importa sobre todo cuando el mail
 es de una consultora externa y la empresa que contrata solo figura en el cuerpo del post.
 
+### Dos tipos de mail
+
+Arriba del formulario se elige qué se está mandando:
+
+- **Directa** — me postulo a esta búsqueda. Es el mail de siempre: nombra el puesto y la
+  empresa, y el asunto sale como `Postulación QA Automation - Fernando Mosqueira`.
+- **Espontánea** — la búsqueda no es de QA, pero igual les acerco el CV para quedar en su base
+  de datos. El cuerpo **no nombra el puesto publicado** —decir "me postulo a Backend Developer"
+  sería mentira— y el asunto es `CV QA - Fernando Mosqueira`.
+
+El adjunto es el mismo en los dos casos: el CV de QA. Lo que cambia es el texto.
+
+**El modo se sugiere solo.** Si el detector no encuentra ningún título de QA en el post, el
+panel abre con Espontánea preseleccionada. Es una sugerencia: se cambia con un click. La regla
+vive en `nucleo.sugerir`, del lado de Python, para que quede cubierta por la suite y no en el
+JavaScript, donde el CI solo mira sintaxis.
+
+Con Espontánea activa el campo Puesto sigue estando y se sigue guardando —sirve en el
+historial— pero la etiqueta avisa que no aparece en el mail. En el panel, esas filas llevan una
+insignia y se pueden filtrar buscando "espontanea".
+
+Sumar un tercer tipo es agregar un archivo de texto y una entrada en `config.json`, bajo
+`idiomas.<idioma>.plantillas`. Una config de una versión anterior, con `plantilla` y `asunto`
+sueltos, se sigue leyendo: se interpreta como el tipo `directa`.
+
 El botón pide **dos clicks a propósito**: el primero muestra el mail exacto que va a salir, el
 segundo lo manda. Editar cualquier campo invalida el borrador y obliga a mirarlo de nuevo. Un
 mail mal dirigido a un recruiter no se puede deshacer.
@@ -169,7 +194,7 @@ python enviar_cli.py --respuestas
 cd tests && python -m unittest discover -v
 ```
 
-120 tests, sin dependencias ni servicios externos. Los fixtures arman su propia carpeta con
+135 tests, sin dependencias ni servicios externos. Los fixtures arman su propia carpeta con
 plantillas y PDF de mentira, así que corren igual en cualquier máquina y en CI, donde no
 existen ni `config.json` ni los CV.
 

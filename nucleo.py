@@ -25,10 +25,15 @@ SEGUNDOS_ANTIDUPLICADO = 120
 def sugerir(cfg: dict, email: str, texto_post: str = "") -> dict:
     """Adivina idioma, puesto y empresa a partir del post y del mail. Todo es editable
     despues: son sugerencias para ahorrar tipeo, no verdades."""
+    puesto = plantillas.detectar_puesto(texto_post)
     return {
         "idioma": plantillas.detectar_idioma(texto_post),
-        "puesto": plantillas.detectar_puesto(texto_post),
+        "puesto": puesto,
         "empresa": plantillas.detectar_empresa(email),
+        # Si el post no nombra ningun titulo de QA, la busqueda no es para este perfil: lo
+        # que corresponde es acercar el CV para futuras aperturas, no postularse a esa
+        # vacante. Se sugiere nomas; el usuario confirma antes de mandar.
+        "tipo": "directa" if puesto else "espontanea",
     }
 
 
@@ -40,9 +45,10 @@ def previsualizar(
     empresa: str = "",
     puesto: str = "",
     idioma: str = "es",
+    tipo: str = "directa",
 ) -> dict:
     """Arma todo lo que se enviaria, sin enviar nada. Es lo que ve el modal antes del boton."""
-    asunto, cuerpo = plantillas.armar(cfg, idioma, recruiter, empresa, puesto)
+    asunto, cuerpo = plantillas.armar(cfg, idioma, recruiter, empresa, puesto, tipo)
     ruta_cv = plantillas.ruta_cv(cfg, idioma)
 
     avisos = []
@@ -60,6 +66,7 @@ def previsualizar(
         "cuerpo": cuerpo,
         "cv": ruta_cv.name,
         "etiqueta": plantillas.etiqueta(cfg, empresa),
+        "tipo": tipo,
         "avisos": avisos,
         "duplicados": [
             {
@@ -80,6 +87,7 @@ def postular(
     empresa: str = "",
     puesto: str = "",
     idioma: str = "es",
+    tipo: str = "directa",
     texto_post: str = "",
     url_post: str = "",
     autor_post: str = "",
@@ -97,7 +105,7 @@ def postular(
     if "@" not in destino:
         raise ValueError(f"'{destino}' no parece una direccion de mail")
 
-    vista = previsualizar(cfg, con, destino, recruiter, empresa, puesto, idioma)
+    vista = previsualizar(cfg, con, destino, recruiter, empresa, puesto, idioma, tipo)
 
     # Antes de mandar nada: si es el mismo mail al mismo destinatario hace un rato, no sale.
     if almacen.enviada_hace_poco(con, destino, vista["asunto"], SEGUNDOS_ANTIDUPLICADO):
@@ -127,6 +135,7 @@ def postular(
         empresa=empresa,
         puesto=puesto,
         idioma=idioma,
+        tipo=tipo,
         asunto=vista["asunto"],
         marca=marca,
         etiqueta=vista["etiqueta"],
@@ -143,6 +152,7 @@ def postular(
         "asunto": vista["asunto"],
         "cv": vista["cv"],
         "etiqueta": vista["etiqueta"],
+        "tipo": tipo,
         "marca": marca,
         "duplicados": vista["duplicados"],
     }

@@ -80,12 +80,13 @@
     }
     .sugerencia button:hover { background: #eaf3fc; }
 
-    .idiomas { display: flex; gap: 8px; margin-top: 4px; }
-    .idiomas button {
+    .idiomas, .tipos { display: flex; gap: 8px; margin-top: 4px; }
+    .nota { margin-top: 5px; font-size: 11.5px; color: #767b80; line-height: 1.35; }
+    .idiomas button, .tipos button {
       flex: 1; padding: 8px; font-size: 13px; cursor: pointer; background: #fff;
       border: 1px solid #b0b6bb; border-radius: 5px; color: #46494d;
     }
-    .idiomas button[aria-pressed="true"] {
+    .idiomas button[aria-pressed="true"], .tipos button[aria-pressed="true"] {
       background: #eaf3fc; border-color: #0a66c2; color: #0a66c2; font-weight: 600;
     }
 
@@ -163,11 +164,21 @@
               <div class="texto">${escapar(texto)}</div>
             </details>` : ""}
 
+          <label>Tipo de envío</label>
+          <div class="tipos">
+            <button type="button" data-tipo="directa" aria-pressed="true">Directa</button>
+            <button type="button" data-tipo="espontanea" aria-pressed="false">Espontánea</button>
+          </div>
+          <div class="nota" id="nota-tipo" hidden>
+            No te postulás a esta búsqueda: les acercás el CV para que te tengan en cuenta
+            ante cualquier apertura de QA.
+          </div>
+
           <label for="empresa">Empresa</label>
           <input type="text" id="empresa" autocomplete="off">
           <div class="sugerencia" id="sug-autor" hidden></div>
 
-          <label for="puesto">Puesto</label>
+          <label for="puesto" id="label-puesto">Puesto</label>
           <input type="text" id="puesto" autocomplete="off">
 
           <label for="recruiter">Nombre de quien recibe <span class="suave">(opcional)</span></label>
@@ -196,6 +207,7 @@
     const contenido = $(".contenido");
 
     let idioma = "es";
+    let tipo = "directa";
     let confirmado = false; // en el segundo click ya vio el borrador
     let terminado = false;  // ya se disparo el envio: no hay vuelta atras
 
@@ -227,6 +239,7 @@
       puesto: campos.puesto.value.trim(),
       recruiter: campos.recruiter.value.trim(),
       idioma,
+      tipo,
       // El post viaja con el envio y queda guardado: es lo que despues permite saber a que
       // oferta correspondia una respuesta, cuando el titulo del puesto ya no alcanza.
       texto: texto || "",
@@ -252,6 +265,27 @@
         raiz.querySelectorAll(".idiomas button").forEach((b) =>
           b.setAttribute("aria-pressed", String(b === boton))
         );
+        invalidarBorrador();
+      })
+    );
+
+    // El puesto se sigue guardando en el historial aunque el cuerpo espontaneo no lo nombre;
+    // decirlo evita que uno lo complete pensando que va a salir en el mail.
+    const reflejarTipo = () => {
+      const espontanea = tipo === "espontanea";
+      $("#nota-tipo").hidden = !espontanea;
+      $("#label-puesto").innerHTML = espontanea
+        ? 'Puesto <span class="suave">(no aparece en el mail)</span>'
+        : "Puesto";
+    };
+
+    raiz.querySelectorAll(".tipos button").forEach((boton) =>
+      boton.addEventListener("click", () => {
+        tipo = boton.dataset.tipo;
+        raiz.querySelectorAll(".tipos button").forEach((b) =>
+          b.setAttribute("aria-pressed", String(b === boton))
+        );
+        reflejarTipo();
         invalidarBorrador();
       })
     );
@@ -325,7 +359,7 @@
 
       if (!resultado.ok) {
         // Se guarda lo tipeado para que reabrir el chip no obligue a rehacerlo.
-        recordado.set(email, { ...datos, idioma });
+        recordado.set(email, datos);  // ya trae idioma y tipo
         aviso.actualizar(
           "error",
           `No se pudo enviar a <b>${escapar(datos.email)}</b>.<br>` +
@@ -372,6 +406,10 @@
         if (s.idioma && s.idioma !== idioma) {
           raiz.querySelector(`.idiomas button[data-idioma="${s.idioma}"]`)?.click();
         }
+        // Si el post no nombra ningun puesto de QA, el servidor sugiere "espontanea".
+        if (s.tipo && s.tipo !== tipo) {
+          raiz.querySelector(`.tipos button[data-tipo="${s.tipo}"]`)?.click();
+        }
         if (s.duplicados?.length) {
           const previas = s.duplicados
             .map((d) => `${d.fecha} · ${d.empresa || "?"} — ${d.puesto || "?"}`)
@@ -390,6 +428,9 @@
         campos.recruiter.value = previo.recruiter || "";
         if (previo.idioma && previo.idioma !== idioma) {
           raiz.querySelector(`.idiomas button[data-idioma="${previo.idioma}"]`)?.click();
+        }
+        if (previo.tipo && previo.tipo !== tipo) {
+          raiz.querySelector(`.tipos button[data-tipo="${previo.tipo}"]`)?.click();
         }
       }
 

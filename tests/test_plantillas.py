@@ -118,6 +118,41 @@ class DominiosSospechosos(unittest.TestCase):
         self.assertFalse(plantillas._casi_igual("acme.com", "gmail.com"))  # lejanas
 
 
+class ConfigVieja(unittest.TestCase):
+    """Las versiones anteriores tenian `plantilla` y `asunto` sueltos por idioma. Nadie
+    tiene que reescribir su config.json para que le siga andando lo de siempre."""
+
+    def test_convierte_la_forma_vieja_en_el_tipo_directa(self):
+        cfg = {"idiomas": {"es": {"plantilla": "cuerpo.txt", "asunto": "Hola {puesto}"}}}
+        plantillas.normalizar(cfg)
+
+        self.assertEqual(
+            cfg["idiomas"]["es"]["plantillas"],
+            {"directa": {"archivo": "cuerpo.txt", "asunto": "Hola {puesto}"}},
+        )
+
+    def test_no_pisa_una_config_que_ya_esta_al_dia(self):
+        ya = {"directa": {"archivo": "a.txt", "asunto": "A"},
+              "espontanea": {"archivo": "b.txt", "asunto": "B"}}
+        cfg = {"idiomas": {"es": {"plantilla": "viejo.txt", "plantillas": ya}}}
+        plantillas.normalizar(cfg)
+        self.assertEqual(cfg["idiomas"]["es"]["plantillas"], ya)
+
+    def test_pedir_espontanea_sobre_una_config_vieja_explica_que_falta(self):
+        cfg = {"idiomas": {"es": {"plantilla": "cuerpo.txt", "asunto": "Hola"}}}
+        plantillas.normalizar(cfg)
+
+        with self.assertRaises(ValueError) as caso:
+            plantillas.elegir_plantilla(cfg, "es", "espontanea")
+        self.assertIn("espontanea", str(caso.exception))
+        self.assertIn("directa", str(caso.exception))   # dice cual si tiene
+
+    def test_es_idempotente(self):
+        cfg = {"idiomas": {"es": {"plantilla": "cuerpo.txt", "asunto": "Hola"}}}
+        plantillas.normalizar(plantillas.normalizar(cfg))
+        self.assertEqual(len(cfg["idiomas"]["es"]["plantillas"]), 1)
+
+
 class Etiquetas(unittest.TestCase):
     def setUp(self):
         self.cfg = {"etiqueta_padre": "Postulaciones"}
@@ -153,13 +188,16 @@ class ArmadoDelMail(unittest.TestCase):
         self.assertIn("Acme", cuerpo)
 
     def test_nunca_queda_un_placeholder_sin_reemplazar(self):
-        # Un "{empresa}" crudo llegando a un recruiter seria bochornoso.
+        # Un "{empresa}" crudo llegando a un recruiter seria bochornoso. Las cuatro
+        # combinaciones de idioma y tipo, con y sin datos.
         for idioma in ("es", "en"):
-            for datos in (("", "", ""), ("Ana", "Acme", "QA")):
-                with self.subTest(idioma=idioma, datos=datos):
-                    _, cuerpo = plantillas.armar(self.cfg, idioma, *datos)
-                    self.assertNotIn("{", cuerpo)
-                    self.assertNotIn("}", cuerpo)
+            for tipo in plantillas.TIPOS:
+                for datos in (("", "", ""), ("Ana", "Acme", "QA")):
+                    with self.subTest(idioma=idioma, tipo=tipo, datos=datos):
+                        asunto, cuerpo = plantillas.armar(self.cfg, idioma, *datos, tipo)
+                        for texto in (asunto, cuerpo):
+                            self.assertNotIn("{", texto)
+                            self.assertNotIn("}", texto)
 
     def test_sin_recruiter_el_saludo_no_queda_cojo(self):
         _, cuerpo = plantillas.armar(self.cfg, "es", "", "Acme", "QA")
@@ -182,6 +220,36 @@ class ArmadoDelMail(unittest.TestCase):
         _, cuerpo = plantillas.armar(self.cfg, "es", "Ana", "Acme", "QA")
         self.assertIn("Nombre Apellido · QA Analyst", cuerpo)
         self.assertIn("linkedin.com/in/ejemplo", cuerpo)
+
+    def test_el_tipo_elige_otro_cuerpo_y_otro_asunto(self):
+        directa, cuerpo_directa = plantillas.armar(self.cfg, "es", "Ana", "Acme", "QA")
+        esp, cuerpo_esp = plantillas.armar(
+            self.cfg, "es", "Ana", "Acme", "QA", "espontanea"
+        )
+
+        self.assertIn("Postulación QA", directa)
+        self.assertEqual(esp, "CV QA - Nombre Apellido")
+        self.assertIn("Me postulo", cuerpo_directa)
+        self.assertIn("Les acerco mi CV", cuerpo_esp)
+
+    def test_el_cuerpo_espontaneo_no_nombra_el_puesto(self):
+        # Es la razon de que exista: el aviso no es de QA, asi que decir "me postulo a
+        # {puesto}" seria mentira. Que la plantilla no use el hueco no puede romper armar().
+        _, cuerpo = plantillas.armar(
+            self.cfg, "es", "Ana", "Acme", "Backend Developer", "espontanea"
+        )
+        self.assertNotIn("Backend Developer", cuerpo)
+        self.assertIn("Acme", cuerpo)
+
+    def test_el_cv_es_el_mismo_en_los_dos_tipos(self):
+        # El tipo cambia el texto, no el adjunto: el CV de QA es el mismo.
+        self.assertEqual(plantillas.ruta_cv(self.cfg, "es").name, "cv-es.pdf")
+
+    def test_tipo_desconocido_falla_temprano(self):
+        with self.assertRaises(ValueError) as caso:
+            plantillas.armar(self.cfg, "es", "", "", "", "inventado")
+        # El mensaje tiene que decir como arreglarlo: termina en la pantalla del usuario.
+        self.assertIn("config.json", str(caso.exception))
 
     def test_idioma_desconocido_falla_temprano(self):
         with self.assertRaises(ValueError):
